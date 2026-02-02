@@ -149,7 +149,7 @@ module SolidScore
         when :ivar, :ivasgn
           instance_vars << node.children[0]
         when :send
-          called_methods << node.children[1] if node.children[0].nil?
+          called_methods << node.children[1]
           if %i[raise fail].include?(node.children[1])
             raise_class = node.children[2]
             raises << extract_class_name(raise_class) if raise_class&.is_a?(::AST::Node) && raise_class.type == :const
