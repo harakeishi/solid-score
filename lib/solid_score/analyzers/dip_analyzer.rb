@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "set"
-
 module SolidScore
   module Analyzers
     class DipAnalyzer < BaseAnalyzer

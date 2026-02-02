@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "set"
-
 module SolidScore
   module Analyzers
     class SrpAnalyzer < BaseAnalyzer
@@ -57,7 +55,7 @@ module SolidScore
       end
 
       def share_instance_variables?(m1, m2)
-        (m1.instance_variables & m2.instance_variables).any?
+        m1.instance_variables.intersect?(m2.instance_variables)
       end
 
       def call_each_other?(m1, m2)

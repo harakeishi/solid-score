@@ -39,9 +39,7 @@ module SolidScore
         attr_writers = []
         current_visibility = :public
 
-        if body
-          traverse_body(body, methods, includes, extends, attr_readers, attr_writers, current_visibility)
-        end
+        traverse_body(body, methods, includes, extends, attr_readers, attr_writers, current_visibility) if body
 
         instance_variables = methods.flat_map(&:instance_variables).uniq
 
@@ -152,7 +150,7 @@ module SolidScore
           called_methods << node.children[1]
           if %i[raise fail].include?(node.children[1])
             raise_class = node.children[2]
-            raises << extract_class_name(raise_class) if raise_class&.is_a?(::AST::Node) && raise_class.type == :const
+            raises << extract_class_name(raise_class) if raise_class.is_a?(::AST::Node) && raise_class.type == :const
           end
         end
 
@@ -161,7 +159,7 @@ module SolidScore
 
       def contains_super?(node)
         return false unless node.is_a?(::AST::Node)
-        return true if node.type == :super || node.type == :zsuper
+        return true if %i[super zsuper].include?(node.type)
 
         node.children.any? { |child| contains_super?(child) }
       end

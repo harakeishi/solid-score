@@ -24,7 +24,7 @@ module SolidScore
       private
 
       def header_line
-        Kernel.format("%-40s %5s %5s %5s %5s %5s %7s", "Class", "SRP", "OCP", "LSP", "ISP", "DIP", "Total")
+        "Class                                      SRP   OCP   LSP   ISP   DIP   Total"
       end
 
       def separator_line
@@ -47,7 +47,7 @@ module SolidScore
       end
 
       def truncate(str, max)
-        str.length > max ? "#{str[0..max - 4]}..." : str
+        str.length > max ? "#{str[0..(max - 4)]}..." : str
       end
     end
   end

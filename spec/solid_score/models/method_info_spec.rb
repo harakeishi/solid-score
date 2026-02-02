@@ -12,7 +12,7 @@ RSpec.describe SolidScore::Models::MethodInfo do
         line_end: 20,
         instance_variables: %i[@total @tax],
         called_methods: [:validate],
-        parameters: [[:req, :amount]],
+        parameters: [%i[req amount]],
         cyclomatic_complexity: 3,
         raises: [],
         calls_super: false

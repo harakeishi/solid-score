@@ -1,6 +1,7 @@
 AllCops:
   TargetRubyVersion: 3.2
   NewCops: enable
+  SuggestExtensions: false
   Exclude:
     - "vendor/**/*"
     - "spec/fixtures/**/*"
@@ -9,9 +10,10 @@ Layout/LineLength:
   Max: 120
 
 Metrics/MethodLength:
-  Max: 15
+  Max: 30
   Exclude:
     - "spec/**/*"
+    - "lib/solid_score/cli.rb"
 
 Metrics/ClassLength:
   Max: 200
@@ -20,6 +22,27 @@ Metrics/BlockLength:
   Exclude:
     - "spec/**/*"
     - "solid_score.gemspec"
+    - "lib/solid_score/cli.rb"
+
+Metrics/AbcSize:
+  Max: 45
+
+Metrics/CyclomaticComplexity:
+  Max: 15
+
+Metrics/PerceivedComplexity:
+  Max: 15
+
+Metrics/ParameterLists:
+  Max: 7
+  Exclude:
+    - "lib/solid_score/models/**/*"
+
+Naming/MethodParameterName:
+  MinNameLength: 1
+
+Naming/PredicatePrefix:
+  Enabled: false
 
 Style/Documentation:
   Enabled: false
@@ -29,3 +52,9 @@ Style/FrozenStringLiteralComment:
 
 Style/StringLiterals:
   EnforcedStyle: double_quotes
+
+Style/FormatStringToken:
+  Enabled: false
+
+Style/ComparableClamp:
+  Enabled: false

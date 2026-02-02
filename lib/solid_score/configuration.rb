@@ -53,18 +53,14 @@ module SolidScore
       @exclude = yaml["exclude"] if yaml["exclude"]
       @format = yaml["format"]&.to_sym if yaml["format"]
 
-      if yaml["thresholds"]
-        yaml["thresholds"].each { |k, v| @thresholds[k.to_sym] = v }
-      end
+      yaml["thresholds"]&.each { |k, v| @thresholds[k.to_sym] = v }
 
-      if yaml["weights"]
-        yaml["weights"].each { |k, v| @weights[k.to_sym] = v }
-      end
+      yaml["weights"]&.each { |k, v| @weights[k.to_sym] = v }
 
-      if yaml["diff"]
-        @max_decrease = yaml["diff"]["max_decrease"]
-        @new_class_min = yaml["diff"]["new_class_min"]
-      end
+      return unless yaml["diff"]
+
+      @max_decrease = yaml["diff"]["max_decrease"]
+      @new_class_min = yaml["diff"]["new_class_min"]
     end
 
     def merge_cli_options(options)
