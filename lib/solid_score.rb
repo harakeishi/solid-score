@@ -11,6 +11,11 @@ require_relative "solid_score/analyzers/ocp_analyzer"
 require_relative "solid_score/analyzers/lsp_analyzer"
 require_relative "solid_score/analyzers/isp_analyzer"
 require_relative "solid_score/analyzers/dip_analyzer"
+require_relative "solid_score/scorer"
+require_relative "solid_score/configuration"
+require_relative "solid_score/formatters/base_formatter"
+require_relative "solid_score/formatters/text_formatter"
+require_relative "solid_score/formatters/json_formatter"
 
 module SolidScore
 end
