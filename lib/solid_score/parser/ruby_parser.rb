@@ -4,6 +4,11 @@ require "parser/current"
 
 module SolidScore
   module Parser
+    # Parses Ruby source files and extracts class/method information.
+    #
+    # Phase 1 改善:
+    # - MethodCallInfo によるレシーバ情報の収集
+    # - case/when 分岐数のカウント
     class RubyParser
       def parse_file(file_path)
         source = File.read(file_path)
@@ -116,11 +121,14 @@ module SolidScore
         instance_vars = []
         called_methods = []
         raises = []
+        method_calls = []
         calls_super = false
+        case_when_count = 0
 
         if body
-          collect_method_details(body, instance_vars, called_methods, raises)
+          collect_method_details(body, instance_vars, called_methods, raises, method_calls)
           calls_super = contains_super?(body)
+          case_when_count = count_case_when_branches(body)
         end
 
         parameters = extract_parameters(args)
@@ -136,25 +144,101 @@ module SolidScore
           parameters: parameters,
           cyclomatic_complexity: complexity,
           raises: raises,
-          calls_super: calls_super
+          calls_super: calls_super,
+          method_calls: method_calls,
+          case_when_count: case_when_count
         )
       end
 
-      def collect_method_details(node, instance_vars, called_methods, raises)
+      # Phase 1 改善: レシーバ情報を含むメソッド呼び出し情報を収集
+      def collect_method_details(node, instance_vars, called_methods, raises, method_calls)
         return unless node.is_a?(::AST::Node)
 
         case node.type
         when :ivar, :ivasgn
           instance_vars << node.children[0]
         when :send
-          called_methods << node.children[1]
-          if %i[raise fail].include?(node.children[1])
+          receiver_node = node.children[0]
+          method_name = node.children[1]
+
+          called_methods << method_name
+
+          # Collect detailed method call info with receiver
+          method_calls << build_method_call_info(receiver_node, method_name)
+
+          if %i[raise fail].include?(method_name)
             raise_class = node.children[2]
             raises << extract_class_name(raise_class) if raise_class.is_a?(::AST::Node) && raise_class.type == :const
           end
         end
 
-        node.children.each { |child| collect_method_details(child, instance_vars, called_methods, raises) }
+        node.children.each do |child|
+          collect_method_details(child, instance_vars, called_methods, raises, method_calls)
+        end
+      end
+
+      # Phase 1 改善: メソッド呼び出し情報を構築
+      #
+      # @param receiver_node [AST::Node, nil] レシーバのASTノード
+      # @param method_name [Symbol] メソッド名
+      # @return [MethodCallInfo] メソッド呼び出し情報
+      def build_method_call_info(receiver_node, method_name)
+        receiver, receiver_type = extract_receiver_info(receiver_node)
+
+        Models::MethodCallInfo.new(
+          method_name: method_name,
+          receiver: receiver,
+          receiver_type: receiver_type
+        )
+      end
+
+      # Phase 1 改善: レシーバ情報を抽出
+      #
+      # @param node [AST::Node, nil] レシーバのASTノード
+      # @return [Array<String, Symbol>] [レシーバ名, レシーバ種類]
+      def extract_receiver_info(node)
+        return [nil, :self] if node.nil?
+        return [nil, :unknown] unless node.is_a?(::AST::Node)
+
+        case node.type
+        when :const
+          [extract_class_name(node), :const]
+        when :ivar
+          [node.children[0].to_s, :ivar]
+        when :lvar
+          [node.children[0].to_s, :lvar]
+        when :self
+          [nil, :self]
+        when :send
+          # Chained method call (e.g., foo.bar.baz)
+          [nil, :send]
+        else
+          [nil, :unknown]
+        end
+      end
+
+      # Phase 1 改善: case/when 分岐数をカウント
+      #
+      # case文内のwhen節の数をカウントします。
+      # OCP違反の兆候として特に重要な指標です。
+      #
+      # @param node [AST::Node] ASTノード
+      # @param count [Integer] 現在のカウント
+      # @return [Integer] case/when分岐の総数
+      def count_case_when_branches(node, count = 0)
+        return count unless node.is_a?(::AST::Node)
+
+        # :case ノードの子要素から :when ノードの数をカウント
+        if node.type == :case
+          when_count = node.children.count { |child| child.is_a?(::AST::Node) && child.type == :when }
+          count += when_count
+        end
+
+        node.children.each do |child|
+          count = count_case_when_branches(child, count)
+        end
+
+        count
       end
 
       def contains_super?(node)

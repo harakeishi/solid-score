@@ -71,5 +71,61 @@ RSpec.describe SolidScore::Parser::RubyParser do
       calculate_method = calc.methods.find { |m| m.name == :calculate }
       expect(calculate_method.called_methods).to include(:tax_amount)
     end
+
+    # Phase 1 改善: case/when 分岐カウントのテスト
+    context "case/when branch counting" do
+      it "counts case/when branches in methods" do
+        parser = described_class.new
+        classes = parser.parse_file("#{fixtures_path}/bad_ocp.rb")
+        calc = classes.first
+
+        # bad_ocp.rb has case/when with 3 branches
+        area_method = calc.methods.find { |m| m.name == :area }
+        expect(area_method.case_when_count).to eq(3)
+      end
+
+      it "returns 0 for methods without case/when" do
+        parser = described_class.new
+        classes = parser.parse_file("#{fixtures_path}/good_dip.rb")
+        order_service = classes.first
+
+        create_method = order_service.methods.find { |m| m.name == :create }
+        expect(create_method.case_when_count).to eq(0)
+      end
+    end
+
+    # Phase 1 改善: レシーバ情報収集のテスト
+    context "receiver info collection" do
+      it "collects method calls with receiver information" do
+        parser = described_class.new
+        classes = parser.parse_file("#{fixtures_path}/bad_dip.rb")
+        order_service = classes.first
+
+        create_method = order_service.methods.find { |m| m.name == :create }
+        expect(create_method.method_calls).not_to be_empty
+
+        # Find .new calls
+        new_calls = create_method.method_calls.select { |mc| mc.method_name == :new }
+        expect(new_calls).not_to be_empty
+
+        # Check receiver information
+        new_call = new_calls.first
+        expect(new_call.receiver_type).to eq(:const)
+        expect(new_call.receiver).not_to be_nil
+      end
+
+      it "identifies receiver types correctly" do
+        parser = described_class.new
+        classes = parser.parse_file("#{fixtures_path}/good_dip.rb")
+        order_service = classes.first
+
+        create_method = order_service.methods.find { |m| m.name == :create }
+        method_calls = create_method.method_calls
+
+        # Calls on instance variables should have :ivar receiver type
+        ivar_calls = method_calls.select { |mc| mc.receiver_type == :ivar }
+        expect(ivar_calls).not_to be_empty
+      end
+    end
   end
 end

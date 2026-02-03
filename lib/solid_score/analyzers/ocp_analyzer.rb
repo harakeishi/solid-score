@@ -2,10 +2,19 @@
 
 module SolidScore
   module Analyzers
+    # Analyzes Open/Closed Principle compliance.
+    #
+    # Phase 1 改善:
+    # - case/when 分岐へのペナルティ追加
+    # - case/when分岐はOCP違反の強い兆候として追加ペナルティを与える
     class OcpAnalyzer < BaseAnalyzer
       TYPE_CHECK_METHODS = %i[is_a? kind_of? instance_of?].freeze
       MAX_TYPE_CHECK_PENALTY = 40
       MAX_EXTENSION_BONUS = 20
+
+      # Phase 1 改善: case/when ペナルティ設定
+      CASE_WHEN_PENALTY_PER_BRANCH = 5
+      MAX_CASE_WHEN_PENALTY = 30
 
       def analyze(class_info)
         return 100 if class_info.methods.empty?
@@ -14,6 +23,7 @@ module SolidScore
 
         score -= conditional_density_penalty(class_info)
         score -= type_check_penalty(class_info)
+        score -= case_when_penalty(class_info) # Phase 1 改善
         score += extension_point_bonus(class_info)
 
         clamp_score(score)
@@ -43,6 +53,20 @@ module SolidScore
         end
 
         [type_checks * 10, MAX_TYPE_CHECK_PENALTY].min
+      end
+
+      # Phase 1 改善: case/when 分岐へのペナルティ
+      #
+      # case/when分岐はOCP違反の強い兆候です。
+      # 新しい型やケースを追加するたびにコードの修正が必要になるため、
+      # ポリモーフィズムへのリファクタリングを推奨します。
+      #
+      # @param class_info [ClassInfo] クラス情報
+      # @return [Integer] ペナルティポイント
+      def case_when_penalty(class_info)
+        total_case_when_branches = class_info.methods.sum(&:case_when_count)
+
+        [total_case_when_branches * CASE_WHEN_PENALTY_PER_BRANCH, MAX_CASE_WHEN_PENALTY].min
       end
 
       def extension_point_bonus(class_info)
