@@ -17,6 +17,17 @@ module SolidScore
       # Maximum lines for a method to be considered "simple"
       SIMPLE_IMPLEMENTATION_MAX_LINES = 3
 
+      # Phase 2a: フレームワーク基底クラスのリスト
+      # これらを継承するクラスではsuperなしペナルティを免除
+      FRAMEWORK_BASE_CLASSES = %w[
+        ApplicationRecord ActiveRecord::Base
+        ApplicationController ActionController::Base ActionController::API
+        ApplicationJob ActiveJob::Base
+        ApplicationMailer ActionMailer::Base
+        ApplicationCable::Channel ActionCable::Channel::Base
+        ApplicationCable::Connection ActionCable::Connection::Base
+      ].freeze
+
       def analyze(class_info)
         return 100 unless class_info.has_superclass?
 
@@ -93,13 +104,22 @@ module SolidScore
       # @param class_info [ClassInfo] クラス情報
       # @return [Boolean] 抽象親パターンかどうか
       def abstract_parent_pattern?(class_info)
-        # Phase 1: Basic implementation
-        # 同一ファイル内での親クラス解析は現状のパーサーでは難しいため、
-        # 親クラス名に "Base" や "Abstract" が含まれる場合にヒューリスティックで判定
         return false unless class_info.superclass
 
         superclass_name = class_info.superclass.to_s
+
+        # Phase 2a: フレームワーク基底クラスを認識
+        return true if framework_base_class?(superclass_name)
+
+        # Phase 1: 親クラス名に "Base" や "Abstract" が含まれる場合にヒューリスティックで判定
         superclass_name.include?("Base") || superclass_name.include?("Abstract")
+      end
+
+      # Phase 2a: フレームワーク基底クラスかどうかを判定
+      def framework_base_class?(superclass_name)
+        FRAMEWORK_BASE_CLASSES.any? do |base|
+          superclass_name == base || superclass_name.end_with?("::#{base}")
+        end
       end
 
       # Calculates the number of lines in a method body.

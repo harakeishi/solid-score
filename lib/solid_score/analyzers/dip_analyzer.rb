@@ -61,23 +61,12 @@ module SolidScore
         end
       end
 
-      # Phase 1 改善: 標準ライブラリ以外の .new 呼び出しをカウント
-      #
-      # @param method [MethodInfo] メソッド情報
-      # @return [Integer] 標準ライブラリ以外の .new 呼び出し数
+      # MethodCallInfo を使用して標準ライブラリ以外の .new 呼び出しをカウント
       def count_non_standard_new_calls(method)
-        # method_calls が空の場合は後方互換性のため called_methods を使用
-        if method.method_calls.empty?
-          # 後方互換性: 従来の方式でカウント
-          return method.called_methods.count { |m| m == :new }
-        end
-
-        # Phase 1: MethodCallInfo を使用してレシーバを判定
         method.method_calls.count do |call|
           next false unless call.method_name == :new
           next false unless call.receiver_type == :const
 
-          # 標準ライブラリでない場合のみカウント
           !standard_library_class?(call.receiver)
         end
       end

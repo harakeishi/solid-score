@@ -25,8 +25,13 @@ module SolidScore
         clamp_score(score)
       end
 
+      # LCOM4（Lack of Cohesion of Methods）を計算する。
+      # インスタンスメソッドのみを対象とする。クラスメソッドは
+      # インスタンス変数を共有しないため凝集度の概念が異なり、
+      # 含めるとスコアが不当に低下する。
+      # NOTE: ISP Analyzerからも呼ばれるためpublic
       def calculate_lcom4(class_info)
-        methods = analyzable_methods(class_info)
+        methods = analyzable_methods(class_info).select(&:instance_method?)
         return 1 if methods.size <= 1
 
         graph = build_method_graph(methods)

@@ -10,6 +10,16 @@ module SolidScore
         [20, 40]
       ].freeze
 
+      # Phase 2a: フレームワークConcern/標準ライブラリモジュール
+      # これらのincludeはペナルティを緩和する
+      FRAMEWORK_MODULES = %w[
+        ActiveModel::Validations ActiveModel::Callbacks
+        ActiveModel::Dirty ActiveModel::Serialization
+        ActiveModel::Model ActiveModel::Attributes
+        ActiveSupport::Concern ActiveSupport::Callbacks
+        Comparable Enumerable Singleton
+      ].freeze
+
       def analyze(class_info)
         public_methods = class_info.public_methods_list
         return 100 if public_methods.empty?
@@ -31,15 +41,42 @@ module SolidScore
         20
       end
 
+      # Phase 2a: フレームワークConcernを区別してペナルティを計算
       def include_penalty(class_info)
-        include_count = class_info.includes.size + class_info.extends.size
+        all_includes = class_info.includes + class_info.extends
+        custom_count = all_includes.count { |mod| !framework_module?(mod) }
+        framework_count = all_includes.size - custom_count
 
-        if include_count >= 7
+        # カスタムモジュールはフルペナルティ、フレームワークモジュールは半減
+        penalty = custom_penalty(custom_count) + framework_penalty(framework_count)
+        [penalty, 20].min
+      end
+
+      def custom_penalty(count)
+        if count >= 7
           20
-        elsif include_count >= 4
+        elsif count >= 4
           10
         else
           0
+        end
+      end
+
+      def framework_penalty(count)
+        if count >= 7
+          10
+        elsif count >= 4
+          5
+        else
+          0
+        end
+      end
+
+      def framework_module?(module_name)
+        return false if module_name.nil?
+
+        FRAMEWORK_MODULES.any? do |fm|
+          module_name == fm || module_name.end_with?("::#{fm}")
         end
       end
 

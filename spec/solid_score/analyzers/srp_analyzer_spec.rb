@@ -43,6 +43,16 @@ RSpec.describe SolidScore::Analyzers::SrpAnalyzer do
         expect(score).to eq(100)
       end
     end
+
+    # Phase 2a: クラスメソッド対応
+    context "with class methods" do
+      it "analyzes classes with class methods" do
+        classes = parser.parse_file("#{fixtures_path}/class_method_example.rb")
+        score = analyzer.analyze(classes.first)
+
+        expect(score).to be_between(0, 100)
+      end
+    end
   end
 
   describe "#calculate_lcom4" do

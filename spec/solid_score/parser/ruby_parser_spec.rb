@@ -94,6 +94,95 @@ RSpec.describe SolidScore::Parser::RubyParser do
       end
     end
 
+    # Phase 2a: クラスメソッド解析
+    context "class method parsing" do
+      it "detects class methods (def self.xxx)" do
+        parser = described_class.new
+        classes = parser.parse_file("#{fixtures_path}/class_method_example.rb")
+
+        user_service = classes.first
+        class_methods = user_service.methods.select(&:class_method?)
+        instance_methods = user_service.methods.select(&:instance_method?)
+
+        expect(class_methods.map(&:name)).to contain_exactly(:find_by_email, :create_from_oauth)
+        expect(instance_methods.map(&:name)).to contain_exactly(:initialize, :full_name, :contact_email)
+      end
+
+      it "sets class methods as public by default" do
+        parser = described_class.new
+        classes = parser.parse_file("#{fixtures_path}/class_method_example.rb")
+
+        user_service = classes.first
+        class_methods = user_service.methods.select(&:class_method?)
+        expect(class_methods).to all(be_public)
+      end
+    end
+
+    # Phase 2a: モジュール解析
+    context "module parsing" do
+      it "extracts module definitions" do
+        parser = described_class.new
+        classes = parser.parse_file("#{fixtures_path}/module_example.rb")
+
+        expect(classes.size).to eq(1)
+        mod = classes.first
+        expect(mod.name).to eq("Serializable")
+        expect(mod.kind).to eq(:module)
+        expect(mod).to be_module
+      end
+
+      it "extracts methods from modules" do
+        parser = described_class.new
+        classes = parser.parse_file("#{fixtures_path}/module_example.rb")
+
+        mod = classes.first
+        method_names = mod.methods.map(&:name)
+        expect(method_names).to contain_exactly(:to_json, :to_xml, :serialize)
+      end
+    end
+
+    # Phase 2a: ネストしたクラス
+    context "nested class parsing" do
+      it "extracts nested classes with qualified names" do
+        parser = described_class.new
+        classes = parser.parse_file("#{fixtures_path}/nested_class.rb")
+
+        names = classes.map(&:name)
+        expect(names).to contain_exactly("Payments", "Payments::Processor", "Payments::Refund")
+      end
+
+      it "parses methods in nested classes" do
+        parser = described_class.new
+        classes = parser.parse_file("#{fixtures_path}/nested_class.rb")
+
+        processor = classes.find { |c| c.name == "Payments::Processor" }
+        method_names = processor.methods.map(&:name)
+        expect(method_names).to contain_exactly(:initialize, :charge)
+      end
+    end
+
+    # Phase 2a: Rails DSL認識
+    context "Rails DSL recognition" do
+      it "recognizes Rails DSL calls" do
+        parser = described_class.new
+        classes = parser.parse_file("#{fixtures_path}/rails_model.rb")
+
+        order = classes.first
+        expect(order.dsl_calls).to include(:has_many, :belongs_to, :has_one,
+                                           :validates, :scope, :enum,
+                                           :before_save, :after_create)
+      end
+
+      it "does not count DSL calls as methods" do
+        parser = described_class.new
+        classes = parser.parse_file("#{fixtures_path}/rails_model.rb")
+
+        order = classes.first
+        method_names = order.methods.map(&:name)
+        expect(method_names).not_to include(:has_many, :belongs_to, :validates)
+      end
+    end
+
     # Phase 1 改善: レシーバ情報収集のテスト
     context "receiver info collection" do
       it "collects method calls with receiver information" do

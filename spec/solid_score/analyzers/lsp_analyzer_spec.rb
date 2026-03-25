@@ -103,6 +103,57 @@ RSpec.describe SolidScore::Analyzers::LspAnalyzer do
       end
     end
 
+    # Phase 2a: フレームワーク基底クラスの認識
+    context "with Rails framework base class" do
+      it "does not penalize ApplicationRecord subclass for missing super" do
+        class_info = SolidScore::Models::ClassInfo.new(
+          name: "Order",
+          superclass: "ApplicationRecord",
+          methods: [
+            SolidScore::Models::MethodInfo.new(
+              name: :complete!,
+              visibility: :public,
+              line_start: 1,
+              line_end: 5,
+              cyclomatic_complexity: 1,
+              calls_super: false
+            ),
+            SolidScore::Models::MethodInfo.new(
+              name: :cancel!,
+              visibility: :public,
+              line_start: 7,
+              line_end: 11,
+              cyclomatic_complexity: 1,
+              calls_super: false
+            )
+          ]
+        )
+        score = analyzer.analyze(class_info)
+
+        expect(score).to eq(100)
+      end
+
+      it "does not penalize ActionController::Base subclass" do
+        class_info = SolidScore::Models::ClassInfo.new(
+          name: "UsersController",
+          superclass: "ApplicationController",
+          methods: [
+            SolidScore::Models::MethodInfo.new(
+              name: :index,
+              visibility: :public,
+              line_start: 1,
+              line_end: 5,
+              cyclomatic_complexity: 2,
+              calls_super: false
+            )
+          ]
+        )
+        score = analyzer.analyze(class_info)
+
+        expect(score).to eq(100)
+      end
+    end
+
     # Phase 1 改善: 複雑な実装への減点テスト
     context "with complex implementation without super" do
       it "applies reduced penalty for complex overrides" do

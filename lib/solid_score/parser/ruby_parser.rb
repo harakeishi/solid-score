@@ -9,42 +9,110 @@ module SolidScore
     # Phase 1 改善:
     # - MethodCallInfo によるレシーバ情報の収集
     # - case/when 分岐数のカウント
+    #
+    # Phase 2a 改善:
+    # - クラスメソッド (def self.xxx) の解析対応
+    # - モジュール (module) の解析対応
+    # - ネストしたクラス/モジュール対応
+    # - Rails DSL認識
     class RubyParser
+      # Rails/ActiveSupport DSLメソッド
+      # これらはメソッド定義ではなくDSL宣言として扱う
+      RAILS_DSL_METHODS = %i[
+        has_many has_one belongs_to has_and_belongs_to_many
+        validates validate validates_presence_of validates_uniqueness_of
+        validates_format_of validates_length_of validates_numericality_of
+        validates_inclusion_of validates_exclusion_of validates_associated
+        before_action after_action around_action skip_before_action
+        before_filter after_filter around_filter
+        before_validation after_validation
+        before_create after_create before_update after_update
+        before_save after_save before_destroy after_destroy
+        after_commit after_rollback
+        scope enum delegate
+        serialize store
+        accepts_nested_attributes_for
+      ].freeze
+
       def parse_file(file_path)
         source = File.read(file_path)
         ast = ::Parser::CurrentRuby.parse(source)
         return [] unless ast
 
-        extract_classes(ast, file_path)
+        extract_definitions(ast, file_path)
       end
 
       private
 
-      def extract_classes(node, file_path, classes = [])
+      # Phase 2a: クラスとモジュールの両方を抽出し、ネストにも対応
+      def extract_definitions(node, file_path, classes = [], namespace = nil)
         return classes unless node.is_a?(::AST::Node)
 
-        if node.type == :class
-          classes << build_class_info(node, file_path)
+        case node.type
+        when :class
+          class_info = build_class_info(node, file_path, namespace)
+          classes << class_info
+          # ネストしたクラス/モジュールを探索
+          extract_nested_definitions(node.children[2], file_path, classes, class_info.name)
+        when :module
+          module_info = build_module_info(node, file_path, namespace)
+          classes << module_info
+          # モジュール内のネストしたクラス/モジュールを探索
+          extract_nested_definitions(node.children[1], file_path, classes, module_info.name)
         else
-          node.children.each { |child| extract_classes(child, file_path, classes) }
+          node.children.each { |child| extract_definitions(child, file_path, classes, namespace) }
         end
 
         classes
       end
 
-      def build_class_info(node, file_path)
-        name = extract_class_name(node.children[0])
+      # ネストしたクラス/モジュールを探索（親のbodyから）
+      def extract_nested_definitions(body, file_path, classes, parent_name)
+        return unless body.is_a?(::AST::Node)
+
+        nodes = body.type == :begin ? body.children : [body]
+        nodes.each do |child|
+          next unless child.is_a?(::AST::Node)
+
+          case child.type
+          when :class, :module
+            extract_definitions(child, file_path, classes, parent_name)
+          end
+        end
+      end
+
+      def build_class_info(node, file_path, namespace = nil)
+        raw_name = extract_class_name(node.children[0])
+        name = namespace ? "#{namespace}::#{raw_name}" : raw_name
         superclass = node.children[1] ? extract_class_name(node.children[1]) : nil
         body = node.children[2]
 
+        build_definition_info(name, file_path, node, body, superclass: superclass, kind: :class)
+      end
+
+      # Phase 2a: モジュール情報を構築
+      def build_module_info(node, file_path, namespace = nil)
+        raw_name = extract_class_name(node.children[0])
+        name = namespace ? "#{namespace}::#{raw_name}" : raw_name
+        body = node.children[1]
+
+        build_definition_info(name, file_path, node, body, kind: :module)
+      end
+
+      # クラス/モジュール共通の情報構築
+      def build_definition_info(name, file_path, node, body, superclass: nil, kind: :class)
         methods = []
         includes = []
         extends = []
         attr_readers = []
         attr_writers = []
+        dsl_calls = []
         current_visibility = :public
 
-        traverse_body(body, methods, includes, extends, attr_readers, attr_writers, current_visibility) if body
+        if body
+          traverse_body(body, methods, includes, extends, attr_readers, attr_writers,
+                        dsl_calls, current_visibility)
+        end
 
         instance_variables = methods.flat_map(&:instance_variables).uniq
 
@@ -59,30 +127,42 @@ module SolidScore
           extends: extends,
           instance_variables: instance_variables,
           attr_readers: attr_readers,
-          attr_writers: attr_writers
+          attr_writers: attr_writers,
+          kind: kind,
+          dsl_calls: dsl_calls
         )
       end
 
-      def traverse_body(node, methods, includes, extends, attr_readers, attr_writers, current_visibility)
+      def traverse_body(node, methods, includes, extends, attr_readers, attr_writers,
+                        dsl_calls, current_visibility)
         return unless node.is_a?(::AST::Node)
 
         case node.type
         when :begin
           node.children.each do |child|
             current_visibility = traverse_body(child, methods, includes, extends,
-                                               attr_readers, attr_writers, current_visibility)
+                                               attr_readers, attr_writers,
+                                               dsl_calls, current_visibility)
           end
         when :def
-          methods << build_method_info(node, current_visibility)
+          methods << build_method_info(node, current_visibility, kind: :instance)
+        when :defs
+          # Phase 2a: クラスメソッド (def self.xxx)
+          # :defs ノード構造: [receiver, name, args, body]
+          methods << build_method_info(node, :public, kind: :class)
         when :send
           current_visibility = handle_send_node(node, current_visibility, includes, extends,
-                                                attr_readers, attr_writers)
+                                                attr_readers, attr_writers, dsl_calls)
+        when :class, :module
+          # ネストしたクラス/モジュールはtraverse_bodyではスキップ
+          # extract_nested_definitionsで別途処理する
         end
 
         current_visibility
       end
 
-      def handle_send_node(node, current_visibility, includes, extends, attr_readers, attr_writers)
+      def handle_send_node(node, current_visibility, includes, extends,
+                           attr_readers, attr_writers, dsl_calls)
         method_name = node.children[1]
 
         case method_name
@@ -109,14 +189,18 @@ module SolidScore
           node.children[2..].each { |arg| attr_writers << arg.children[0] if arg.type == :sym }
           current_visibility
         else
+          # Phase 2a: Rails DSL認識
+          if RAILS_DSL_METHODS.include?(method_name)
+            dsl_calls << method_name
+          end
           current_visibility
         end
       end
 
-      def build_method_info(node, visibility)
-        name = node.children[0]
-        args = node.children[1]
-        body = node.children[2]
+      # :def ノード構造: [name, args, body]
+      # :defs ノード構造: [receiver, name, args, body]
+      def build_method_info(node, visibility, kind: :instance)
+        name, args, body = extract_method_parts(node, kind)
 
         instance_vars = []
         called_methods = []
@@ -146,8 +230,18 @@ module SolidScore
           raises: raises,
           calls_super: calls_super,
           method_calls: method_calls,
-          case_when_count: case_when_count
+          case_when_count: case_when_count,
+          kind: kind
         )
+      end
+
+      def extract_method_parts(node, kind)
+        case kind
+        when :class
+          [node.children[1], node.children[2], node.children[3]]
+        else
+          [node.children[0], node.children[1], node.children[2]]
+        end
       end
 
       # Phase 1 改善: レシーバ情報を含むメソッド呼び出し情報を収集
@@ -178,10 +272,6 @@ module SolidScore
       end
 
       # Phase 1 改善: メソッド呼び出し情報を構築
-      #
-      # @param receiver_node [AST::Node, nil] レシーバのASTノード
-      # @param method_name [Symbol] メソッド名
-      # @return [MethodCallInfo] メソッド呼び出し情報
       def build_method_call_info(receiver_node, method_name)
         receiver, receiver_type = extract_receiver_info(receiver_node)
 
@@ -193,9 +283,6 @@ module SolidScore
       end
 
       # Phase 1 改善: レシーバ情報を抽出
-      #
-      # @param node [AST::Node, nil] レシーバのASTノード
-      # @return [Array<String, Symbol>] [レシーバ名, レシーバ種類]
       def extract_receiver_info(node)
         return [nil, :self] if node.nil?
         return [nil, :unknown] unless node.is_a?(::AST::Node)
@@ -218,17 +305,9 @@ module SolidScore
       end
 
       # Phase 1 改善: case/when 分岐数をカウント
-      #
-      # case文内のwhen節の数をカウントします。
-      # OCP違反の兆候として特に重要な指標です。
-      #
-      # @param node [AST::Node] ASTノード
-      # @param count [Integer] 現在のカウント
-      # @return [Integer] case/when分岐の総数
       def count_case_when_branches(node, count = 0)
         return count unless node.is_a?(::AST::Node)
 
-        # :case ノードの子要素から :when ノードの数をカウント
         if node.type == :case
           when_count = node.children.count { |child| child.is_a?(::AST::Node) && child.type == :when }
           count += when_count

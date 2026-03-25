@@ -5,11 +5,13 @@ module SolidScore
     class ClassInfo
       attr_reader :name, :file_path, :line_start, :line_end,
                   :methods, :superclass, :includes, :extends,
-                  :instance_variables, :attr_readers, :attr_writers
+                  :instance_variables, :attr_readers, :attr_writers,
+                  :kind, :dsl_calls
 
       def initialize(name:, file_path: "", line_start: 0, line_end: 0,
                      methods: [], superclass: nil, includes: [], extends: [],
-                     instance_variables: [], attr_readers: [], attr_writers: [])
+                     instance_variables: [], attr_readers: [], attr_writers: [],
+                     kind: :class, dsl_calls: [])
         @name = name
         @file_path = file_path
         @line_start = line_start
@@ -21,6 +23,12 @@ module SolidScore
         @instance_variables = instance_variables
         @attr_readers = attr_readers
         @attr_writers = attr_writers
+        @kind = kind
+        @dsl_calls = dsl_calls
+      end
+
+      def module?
+        kind == :module
       end
 
       def public_methods_list
