@@ -43,6 +43,58 @@ RSpec.describe SolidScore::Analyzers::SrpAnalyzer do
         expect(score).to eq(100)
       end
     end
+
+    # Phase 2a: クラスメソッド対応
+    context "with class methods" do
+      it "analyzes classes with class methods" do
+        classes = parser.parse_file("#{fixtures_path}/class_method_example.rb")
+        score = analyzer.analyze(classes.first)
+
+        expect(score).to be_between(0, 100)
+      end
+    end
+
+    # Phase 2c: フレームワーク基盤クラス最低スコア保証
+    context "with framework base class" do
+      it "guarantees minimum score of 70 for ApplicationController-like classes" do
+        class_info = SolidScore::Models::ClassInfo.new(
+          name: "ApplicationController",
+          superclass: "ActionController::Base",
+          file_path: "app/controllers/application_controller.rb",
+          methods: [
+            SolidScore::Models::MethodInfo.new(name: :auth, visibility: :public, line_start: 1, line_end: 10,
+                                                instance_variables: [:@user]),
+            SolidScore::Models::MethodInfo.new(name: :error_handler, visibility: :public, line_start: 12, line_end: 20,
+                                                instance_variables: [:@error]),
+            SolidScore::Models::MethodInfo.new(name: :set_locale, visibility: :public, line_start: 22, line_end: 30,
+                                                instance_variables: [:@locale]),
+            SolidScore::Models::MethodInfo.new(name: :log_request, visibility: :public, line_start: 32, line_end: 40,
+                                                instance_variables: [:@request])
+          ]
+        )
+        score = analyzer.analyze(class_info)
+
+        expect(score).to be >= 70
+      end
+    end
+
+    # Phase 2c: 小規模クラスの補正
+    context "with small class (<=3 methods)" do
+      it "does not unfairly penalize small classes" do
+        class_info = SolidScore::Models::ClassInfo.new(
+          name: "SmallClass",
+          methods: [
+            SolidScore::Models::MethodInfo.new(name: :foo, visibility: :public, line_start: 1, line_end: 3,
+                                                instance_variables: [:@a]),
+            SolidScore::Models::MethodInfo.new(name: :bar, visibility: :public, line_start: 5, line_end: 7,
+                                                instance_variables: [:@b])
+          ]
+        )
+        score = analyzer.analyze(class_info)
+
+        expect(score).to be >= 80
+      end
+    end
   end
 
   describe "#calculate_lcom4" do

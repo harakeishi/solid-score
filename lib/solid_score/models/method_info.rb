@@ -26,12 +26,12 @@ module SolidScore
       attr_reader :name, :visibility, :line_start, :line_end,
                   :instance_variables, :called_methods, :parameters,
                   :cyclomatic_complexity, :raises, :calls_super,
-                  :method_calls, :case_when_count
+                  :method_calls, :case_when_count, :kind
 
       def initialize(name:, visibility: :public, line_start: 0, line_end: 0,
                      instance_variables: [], called_methods: [], parameters: [],
                      cyclomatic_complexity: 1, raises: [], calls_super: false,
-                     method_calls: [], case_when_count: 0)
+                     method_calls: [], case_when_count: 0, kind: :instance)
         @name = name
         @visibility = visibility
         @line_start = line_start
@@ -44,10 +44,19 @@ module SolidScore
         @calls_super = calls_super
         @method_calls = method_calls
         @case_when_count = case_when_count
+        @kind = kind
       end
 
       def public?
         visibility == :public
+      end
+
+      def class_method?
+        kind == :class
+      end
+
+      def instance_method?
+        kind == :instance
       end
 
       def empty?

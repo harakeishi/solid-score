@@ -4,15 +4,17 @@ module SolidScore
   module Analyzers
     # Analyzes Open/Closed Principle compliance.
     #
-    # Phase 1 改善:
-    # - case/when 分岐へのペナルティ追加
-    # - case/when分岐はOCP違反の強い兆候として追加ペナルティを与える
+    # Phase 1 改善: case/when 分岐へのペナルティ追加
+    # Phase 2b 改善: respond_to? を弱い型チェックとして追加
     class OcpAnalyzer < BaseAnalyzer
-      TYPE_CHECK_METHODS = %i[is_a? kind_of? instance_of?].freeze
+      # 強い型チェック: 直接的な型判定 → 10点/回
+      STRONG_TYPE_CHECK_METHODS = %i[is_a? kind_of? instance_of?].freeze
+      # 弱い型チェック: ダックタイピング分岐 → 5点/回
+      WEAK_TYPE_CHECK_METHODS = %i[respond_to?].freeze
+
       MAX_TYPE_CHECK_PENALTY = 40
       MAX_EXTENSION_BONUS = 20
 
-      # Phase 1 改善: case/when ペナルティ設定
       CASE_WHEN_PENALTY_PER_BRANCH = 5
       MAX_CASE_WHEN_PENALTY = 30
 
@@ -47,12 +49,18 @@ module SolidScore
         end
       end
 
+      # Phase 2b: 強い型チェックと弱い型チェックで差別化
       def type_check_penalty(class_info)
-        type_checks = class_info.methods.sum do |method|
-          method.called_methods.count { |m| TYPE_CHECK_METHODS.include?(m) }
-        end
+        strong_checks = count_type_checks(class_info, STRONG_TYPE_CHECK_METHODS)
+        weak_checks = count_type_checks(class_info, WEAK_TYPE_CHECK_METHODS)
 
-        [type_checks * 10, MAX_TYPE_CHECK_PENALTY].min
+        [strong_checks * 10 + weak_checks * 5, MAX_TYPE_CHECK_PENALTY].min
+      end
+
+      def count_type_checks(class_info, check_methods)
+        class_info.methods.sum do |method|
+          method.called_methods.count { |m| check_methods.include?(m) }
+        end
       end
 
       # Phase 1 改善: case/when 分岐へのペナルティ

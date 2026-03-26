@@ -57,6 +57,44 @@ RSpec.describe SolidScore::Analyzers::OcpAnalyzer do
       end
     end
 
+    # Phase 2b: respond_to? の弱い型チェックペナルティ
+    context "with respond_to? checks" do
+      it "applies reduced penalty for respond_to?" do
+        classes = parser.parse_file("#{fixtures_path}/respond_to_example.rb")
+        handler = classes.first
+        score = analyzer.analyze(handler)
+
+        # respond_to? は弱い型チェック（5点/回）→ 3回 = 15点
+        expect(score).to be < 100
+        expect(score).to be > 50
+      end
+
+      it "penalizes respond_to? less than is_a?" do
+        # respond_to? 3回 → 15点
+        respond_to_method = SolidScore::Models::MethodInfo.new(
+          name: :handle,
+          called_methods: [:respond_to?, :respond_to?, :respond_to?]
+        )
+        respond_to_class = SolidScore::Models::ClassInfo.new(
+          name: "A", methods: [respond_to_method]
+        )
+
+        # is_a? 3回 → 30点
+        is_a_method = SolidScore::Models::MethodInfo.new(
+          name: :handle,
+          called_methods: [:is_a?, :is_a?, :is_a?]
+        )
+        is_a_class = SolidScore::Models::ClassInfo.new(
+          name: "B", methods: [is_a_method]
+        )
+
+        respond_to_score = analyzer.analyze(respond_to_class)
+        is_a_score = analyzer.analyze(is_a_class)
+
+        expect(respond_to_score).to be > is_a_score
+      end
+    end
+
     context "with case_when_count in MethodInfo" do
       it "counts case/when branches correctly" do
         method_with_case = SolidScore::Models::MethodInfo.new(

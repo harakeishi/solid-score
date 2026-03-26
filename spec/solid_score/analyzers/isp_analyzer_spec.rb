@@ -34,5 +34,31 @@ RSpec.describe SolidScore::Analyzers::IspAnalyzer do
         expect(score).to eq(100)
       end
     end
+
+    # Phase 2a: フレームワークConcernの緩和
+    context "with framework module includes" do
+      it "applies reduced penalty for framework modules" do
+        class_info = SolidScore::Models::ClassInfo.new(
+          name: "AuditableRecord",
+          includes: %w[Comparable ActiveModel::Validations ActiveModel::Dirty ActiveSupport::Callbacks],
+          methods: [
+            SolidScore::Models::MethodInfo.new(name: :audit, visibility: :public, line_start: 1, line_end: 3)
+          ]
+        )
+        score_with_framework = analyzer.analyze(class_info)
+
+        class_info_custom = SolidScore::Models::ClassInfo.new(
+          name: "CustomRecord",
+          includes: %w[MyModule1 MyModule2 MyModule3 MyModule4],
+          methods: [
+            SolidScore::Models::MethodInfo.new(name: :audit, visibility: :public, line_start: 1, line_end: 3)
+          ]
+        )
+        score_with_custom = analyzer.analyze(class_info_custom)
+
+        # Framework includes should result in higher score than custom includes
+        expect(score_with_framework).to be > score_with_custom
+      end
+    end
   end
 end

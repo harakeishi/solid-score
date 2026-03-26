@@ -22,12 +22,27 @@ module SolidScore
         score -= wmc_penalty(class_info)
         score -= line_count_penalty(class_info)
 
+        # Phase 2c: フレームワーク基盤クラスの最低スコア保証
+        score = mitigate_framework_base(score, class_info)
+
+        # Phase 2c: APIクライアントパターンの最低スコア保証
+        score = mitigate_api_client(score, class_info)
+
         clamp_score(score)
       end
 
+      # LCOM4（Lack of Cohesion of Methods）を計算する。
+      # インスタンスメソッドのみを対象とする。クラスメソッドは
+      # インスタンス変数を共有しないため凝集度の概念が異なり、
+      # 含めるとスコアが不当に低下する。
+      # NOTE: ISP Analyzerからも呼ばれるためpublic
       def calculate_lcom4(class_info)
-        methods = analyzable_methods(class_info)
+        methods = analyzable_methods(class_info).select(&:instance_method?)
         return 1 if methods.size <= 1
+
+        # Phase 2c: 小規模クラス（メソッド数≤3）はLCOM4を1に固定
+        # 少ないメソッドで凝集度を測定しても統計的に意味がない
+        return 1 if methods.size <= 3
 
         graph = build_method_graph(methods)
         count_connected_components(graph, methods)
@@ -93,6 +108,23 @@ module SolidScore
 
       def mitigate_data_class(score, _class_info)
         [score, 90].max
+      end
+
+      # Phase 2c: フレームワーク基盤クラス (ApplicationController等) の最低スコア保証
+      # Railsの規約として共通ロジック集約は許容される
+      def mitigate_framework_base(score, class_info)
+        return score unless class_info.framework_base_class?
+
+        [score, 70].max
+      end
+
+      # Phase 2c: APIクライアントパターンの最低スコア保証
+      # 全publicメソッドが共通のHTTPクライアント変数を参照する構造は
+      # 「1つの外部サービスとの通信」という単一責務
+      def mitigate_api_client(score, class_info)
+        return score unless class_info.http_client_pattern?
+
+        [score, 80].max
       end
 
       def wmc_penalty(class_info)
