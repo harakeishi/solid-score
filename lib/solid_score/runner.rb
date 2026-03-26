@@ -7,7 +7,7 @@ module SolidScore
     def initialize(config)
       @config = config
       @parser = Parser::RubyParser.new
-      @scorer = Scorer.new(weights: config.weights)
+      @scorer = Scorer.new(weights: config.weights, dip_whitelist: config.dip_whitelist)
       @results = []
     end
 

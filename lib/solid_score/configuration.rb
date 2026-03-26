@@ -22,7 +22,8 @@ module SolidScore
     }.freeze
 
     attr_accessor :paths, :exclude, :format, :thresholds, :weights,
-                  :diff_ref, :max_decrease, :new_class_min
+                  :diff_ref, :max_decrease, :new_class_min,
+                  :dip_whitelist
 
     def initialize
       @paths = ["."]
@@ -33,6 +34,7 @@ module SolidScore
       @diff_ref = nil
       @max_decrease = nil
       @new_class_min = nil
+      @dip_whitelist = []
     end
 
     def self.default
@@ -56,6 +58,10 @@ module SolidScore
       yaml["thresholds"]&.each { |k, v| @thresholds[k.to_sym] = v }
 
       yaml["weights"]&.each { |k, v| @weights[k.to_sym] = v }
+
+      if yaml["dip"]
+        @dip_whitelist = yaml["dip"]["whitelist"] || []
+      end
 
       return unless yaml["diff"]
 

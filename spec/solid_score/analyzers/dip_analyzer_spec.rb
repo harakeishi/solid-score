@@ -74,6 +74,82 @@ RSpec.describe SolidScore::Analyzers::DipAnalyzer do
       end
     end
 
+    # Phase 2b: ファクトリメソッド検出
+    context "with factory methods" do
+      it "detects ClassName.create as concrete dependency" do
+        classes = parser.parse_file("#{fixtures_path}/factory_method_example.rb")
+        score = analyzer.analyze(classes.first)
+
+        # Order.create, Receipt.build, NotificationService.call = 3 concrete deps
+        # File.open は標準ライブラリなのでカウントしない
+        expect(score).to be < 100
+      end
+
+      it "does not count standard library factory methods" do
+        method_call = SolidScore::Models::MethodCallInfo.new(
+          method_name: :open,
+          receiver: "File",
+          receiver_type: :const
+        )
+        method_info = SolidScore::Models::MethodInfo.new(
+          name: :test,
+          method_calls: [method_call]
+        )
+        class_info = SolidScore::Models::ClassInfo.new(
+          name: "Test",
+          methods: [method_info]
+        )
+
+        score = analyzer.analyze(class_info)
+        expect(score).to eq(100)
+      end
+    end
+
+    # Phase 2b: ユーザー定義ホワイトリスト
+    context "with user-defined whitelist" do
+      it "excludes user-whitelisted classes from penalty" do
+        custom_analyzer = described_class.new(user_whitelist: ["Redis"])
+
+        method_call = SolidScore::Models::MethodCallInfo.new(
+          method_name: :new,
+          receiver: "Redis",
+          receiver_type: :const
+        )
+        method_info = SolidScore::Models::MethodInfo.new(
+          name: :test,
+          method_calls: [method_call]
+        )
+        class_info = SolidScore::Models::ClassInfo.new(
+          name: "Test",
+          methods: [method_info]
+        )
+
+        score = custom_analyzer.analyze(class_info)
+        expect(score).to eq(100)
+      end
+
+      it "still penalizes non-whitelisted classes" do
+        custom_analyzer = described_class.new(user_whitelist: ["Redis"])
+
+        method_call = SolidScore::Models::MethodCallInfo.new(
+          method_name: :new,
+          receiver: "CustomService",
+          receiver_type: :const
+        )
+        method_info = SolidScore::Models::MethodInfo.new(
+          name: :test,
+          method_calls: [method_call]
+        )
+        class_info = SolidScore::Models::ClassInfo.new(
+          name: "Test",
+          methods: [method_info]
+        )
+
+        score = custom_analyzer.analyze(class_info)
+        expect(score).to be < 100
+      end
+    end
+
     context "with standard library whitelist" do
       it "recognizes common standard library classes" do
         whitelisted = %w[Array Hash Set Time Date Mutex Thread Logger]

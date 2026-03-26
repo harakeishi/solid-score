@@ -2,13 +2,13 @@
 
 module SolidScore
   class Scorer
-    def initialize(weights: Models::ScoreResult::DEFAULT_WEIGHTS)
+    def initialize(weights: Models::ScoreResult::DEFAULT_WEIGHTS, dip_whitelist: [])
       @weights = weights
       @srp_analyzer = Analyzers::SrpAnalyzer.new
       @ocp_analyzer = Analyzers::OcpAnalyzer.new
       @lsp_analyzer = Analyzers::LspAnalyzer.new
       @isp_analyzer = Analyzers::IspAnalyzer.new
-      @dip_analyzer = Analyzers::DipAnalyzer.new
+      @dip_analyzer = Analyzers::DipAnalyzer.new(user_whitelist: dip_whitelist)
     end
 
     def score(class_info)
@@ -20,7 +20,8 @@ module SolidScore
         lsp: @lsp_analyzer.analyze(class_info),
         isp: @isp_analyzer.analyze(class_info),
         dip: @dip_analyzer.analyze(class_info),
-        weights: @weights
+        weights: @weights,
+        class_info: class_info
       )
     end
 

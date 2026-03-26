@@ -41,13 +41,43 @@ RSpec.describe SolidScore::Models::ScoreResult do
   end
 
   describe "#confidence" do
-    it "returns confidence levels for each principle" do
+    it "returns base confidence levels without class_info" do
       result = described_class.new(class_name: "Foo")
       confidence = result.confidence
 
       expect(confidence[:srp]).to eq(:high)
-      expect(confidence[:ocp]).to eq(:low)
+      expect(confidence[:ocp]).to eq(:medium)
       expect(confidence[:dip]).to eq(:high)
+    end
+
+    # Phase 2b: class_infoに基づく動的な信頼度
+    it "lowers confidence when class has few methods" do
+      class_info = SolidScore::Models::ClassInfo.new(
+        name: "Tiny",
+        methods: [
+          SolidScore::Models::MethodInfo.new(name: :foo, line_start: 1, line_end: 3)
+        ]
+      )
+      result = described_class.new(class_name: "Tiny", class_info: class_info)
+      confidence = result.confidence
+
+      # 1メソッドしかない → 全体的に信頼度低下
+      expect(SolidScore::Models::ScoreResult::CONFIDENCE_ORDER.index(confidence[:srp])).to be <
+        SolidScore::Models::ScoreResult::CONFIDENCE_ORDER.index(:high)
+    end
+
+    it "returns high LSP confidence for modules" do
+      class_info = SolidScore::Models::ClassInfo.new(
+        name: "MyModule",
+        kind: :module,
+        methods: [
+          SolidScore::Models::MethodInfo.new(name: :foo, line_start: 1, line_end: 3),
+          SolidScore::Models::MethodInfo.new(name: :bar, line_start: 5, line_end: 7)
+        ]
+      )
+      result = described_class.new(class_name: "MyModule", class_info: class_info)
+
+      expect(result.confidence[:lsp]).to eq(:high)
     end
   end
 end
