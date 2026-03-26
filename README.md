@@ -9,7 +9,7 @@ A static analysis tool that scores Ruby classes and modules against SOLID princi
 ## Features
 
 - **SOLID Principles Analysis**: Scores each class/module on all five SOLID principles (SRP, OCP, LSP, ISP, DIP)
-- **Multiple Output Formats**: Text (table) and JSON output for CI/CD integration
+- **Multiple Output Formats**: Text (table), JSON, and HTML report output
 - **Git Diff Mode**: Analyze only changed files to prevent score regression
 - **Configurable Thresholds**: Set minimum scores for CI quality gates
 - **Customizable Weights**: Adjust the importance of each principle in the total score
@@ -46,6 +46,9 @@ solid-score app/models
 # Output as JSON
 solid-score app/ --format json
 
+# Generate HTML report
+solid-score app/ --format html > report.html
+
 # Analyze only changed files (git diff)
 solid-score . --diff origin/main
 
@@ -61,7 +64,7 @@ solid-score . --config .solid-score.yml
 Usage: solid-score [path] [options]
 
 Options:
-    --format FORMAT              Output format: text (default), json
+    --format FORMAT              Output format: text (default), json, html
     --config FILE                Path to configuration file
     --min-score SCORE            Minimum total score (exit 1 if below)
     --min-srp SCORE              Minimum SRP score
@@ -145,8 +148,11 @@ exclude:
   - tmp/**
   - vendor/**
 
+# Preset (loads predefined configuration)
+# preset: rails
+
 # Output format
-format: text  # or json
+format: text  # or json or html
 
 # Score thresholds (CI will fail if below)
 thresholds:
@@ -227,9 +233,28 @@ Calculates the ratio of concrete class instantiations to total dependencies:
 
 - **Confidence**: High
 
+## Rails Preset
+
+For Rails projects, use the built-in preset to get sensible defaults:
+
+```yaml
+# .solid-score.yml
+preset: rails
+thresholds:
+  total: 60
+```
+
+The Rails preset configures:
+- **Paths**: `app/models`, `app/controllers`, `app/services`, `app/jobs`, `app/mailers`, `lib`, etc.
+- **Excludes**: `spec/**`, `test/**`, `vendor/**`, `db/**`, `tmp/**`
+- **Weights**: DIP weighted higher (0.30), SRP slightly lower (0.25)
+- **DIP Whitelist**: Rails, Logger, Net::HTTP, ActionMailer, ActiveJob, etc.
+
+Explicit YAML values override the preset.
+
 ## CI/CD Integration
 
-### GitHub Actions
+### GitHub Actions (Official Action)
 
 ```yaml
 name: SOLID Score Check
@@ -244,7 +269,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Required for diff mode
+          fetch-depth: 0
+
+      - uses: harakeishi/solid-score@main
+        with:
+          min-score: "70"
+          pr-comment: "true"
+```
+
+The action supports these inputs:
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `ruby-version` | `3.2` | Ruby version |
+| `min-score` | `0` | Minimum total score threshold |
+| `format` | `text` | Output format (text/json/html) |
+| `paths` | `.` | Paths to analyze |
+| `config` | `.solid-score.yml` | Config file path |
+| `pr-comment` | `false` | Post score report as PR comment |
+| `diff-ref` | `origin/main` | Base ref for diff comparison |
+
+Outputs: `score-json`, `passing`, `average-score`.
+
+### Manual Setup
+
+```yaml
+jobs:
+  solid-score:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: ruby/setup-ruby@v1
         with:

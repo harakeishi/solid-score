@@ -72,6 +72,8 @@ module SolidScore
       case @config.format
       when :json
         Formatters::JsonFormatter.new
+      when :html
+        Formatters::HtmlFormatter.new
       else
         Formatters::TextFormatter.new
       end

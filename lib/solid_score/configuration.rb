@@ -51,6 +51,8 @@ module SolidScore
     end
 
     def apply_yaml(yaml)
+      apply_preset(yaml["preset"]) if yaml["preset"]
+
       @paths = yaml["paths"] if yaml["paths"]
       @exclude = yaml["exclude"] if yaml["exclude"]
       @format = yaml["format"]&.to_sym if yaml["format"]
@@ -81,6 +83,16 @@ module SolidScore
 
       @max_decrease = options[:max_decrease] if options[:max_decrease]
       @exclude = options[:exclude].split(",") if options[:exclude]
+    end
+
+    private
+
+    def apply_preset(name)
+      preset = Presets.fetch(name)
+      @paths = preset[:paths] if preset[:paths]
+      @exclude = preset[:exclude] if preset[:exclude]
+      preset[:weights]&.each { |k, v| @weights[k] = v }
+      @dip_whitelist = preset[:dip_whitelist] if preset[:dip_whitelist]
     end
   end
 end

@@ -30,7 +30,7 @@ module SolidScore
       parser = OptionParser.new do |opts|
         opts.banner = "Usage: solid-score [path] [options]"
 
-        opts.on("--format FORMAT", %w[text json], "Output format (text|json)") do |f|
+        opts.on("--format FORMAT", %w[text json html], "Output format (text|json|html)") do |f|
           options[:format] = f.to_sym
         end
 
