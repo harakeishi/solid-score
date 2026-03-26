@@ -40,7 +40,7 @@ module SolidScore
         if result.total < 50
           $stderr.puts "WARNING: #{message}"
         elsif result.total < 80
-          $stdout.puts "INFO: #{message}"
+          $stderr.puts "INFO: #{message}"
         end
       end
     end
