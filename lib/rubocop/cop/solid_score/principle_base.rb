@@ -19,8 +19,7 @@ module RuboCop
         private
 
         def check_principle(node)
-          results = score_results_for(node)
-          results.each do |result|
+          score_results_for.each do |result|
             target_node = find_class_node_for(result) || node
             next unless same_node?(target_node, node)
 
@@ -29,14 +28,10 @@ module RuboCop
             next unless score < threshold
 
             add_offense(node, message: format(
-              "%s score %.1f is below minimum %g",
-              principle_name, score, threshold
+              self.class::MSG,
+              score, threshold
             ))
           end
-        end
-
-        def same_node?(target, current)
-          target.loc.keyword.line == current.loc.keyword.line
         end
 
         def principle_key

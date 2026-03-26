@@ -36,8 +36,7 @@ module RuboCop
         private
 
         def check_scores(node)
-          results = score_results_for(node)
-          results.each do |result|
+          score_results_for.each do |result|
             target_node = find_class_node_for(result) || node
             next unless same_node?(target_node, node)
             next unless result.total < score_threshold
@@ -48,10 +47,6 @@ module RuboCop
               result.srp, result.ocp, result.lsp, result.isp, result.dip
             ))
           end
-        end
-
-        def same_node?(target, current)
-          target.loc.keyword.line == current.loc.keyword.line
         end
       end
     end

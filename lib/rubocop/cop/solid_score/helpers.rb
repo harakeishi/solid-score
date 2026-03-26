@@ -8,9 +8,8 @@ module RuboCop
       module Helpers
         private
 
-        def score_results_for(node)
-          file_path = processed_source.file_path
-          @solid_score_results ||= compute_scores(file_path)
+        def score_results_for
+          @solid_score_results ||= compute_scores(processed_source.file_path)
         end
 
         def compute_scores(file_path)
@@ -44,10 +43,10 @@ module RuboCop
         end
 
         def find_class_node_for(result)
-          find_node_at_line(processed_source.ast, result.file_path, result.class_info&.line_start)
+          find_node_at_line(processed_source.ast, result.class_info&.line_start)
         end
 
-        def find_node_at_line(ast, _file_path, target_line)
+        def find_node_at_line(ast, target_line)
           return nil unless ast && target_line
 
           if %i[class module].include?(ast.type) && ast.loc.keyword.line == target_line
@@ -59,11 +58,15 @@ module RuboCop
           ast.children.each do |child|
             next unless child.is_a?(::RuboCop::AST::Node)
 
-            found = find_node_at_line(child, _file_path, target_line)
+            found = find_node_at_line(child, target_line)
             return found if found
           end
 
           nil
+        end
+
+        def same_node?(target, current)
+          target.loc.keyword.line == current.loc.keyword.line
         end
       end
     end
