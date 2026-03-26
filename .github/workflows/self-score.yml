@@ -54,7 +54,14 @@ jobs:
         env:
           CHANGED_FILES: ${{ steps.changed.outputs.files }}
         run: |
-          JSON_OUTPUT=$(bundle exec solid-score $CHANGED_FILES --format json --min-score 0) || true
+          echo "::group::solid-score current branch"
+          echo "Analyzing: $CHANGED_FILES"
+          TMPJSON=$(mktemp)
+          bundle exec solid-score $CHANGED_FILES --format json --min-score 0 > "$TMPJSON" 2>/dev/null || true
+          JSON_OUTPUT=$(cat "$TMPJSON")
+          rm -f "$TMPJSON"
+          echo "$JSON_OUTPUT"
+          echo "::endgroup::"
           {
             echo "json<<SOLID_SCORE_EOF"
             echo "$JSON_OUTPUT"
@@ -67,34 +74,42 @@ jobs:
         env:
           CHANGED_FILES: ${{ steps.changed.outputs.files }}
         run: |
+          echo "::group::solid-score base (main)"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            BASE_REF="${{ github.event.pull_request.base.sha }}"
           else
-            BASE_SHA="origin/main"
+            BASE_REF="origin/main"
           fi
+          echo "Base ref: $BASE_REF"
 
-          # Checkout base versions of changed files
-          git stash --include-untracked || true
-          for f in $CHANGED_FILES; do
-            git checkout "$BASE_SHA" -- "$f" 2>/dev/null || true
-          done
+          # Use git worktree for clean base checkout
+          WORKTREE_DIR=$(mktemp -d)
+          git worktree add "$WORKTREE_DIR" "$BASE_REF" --detach 2>/dev/null
 
-          # Only analyze files that existed in base (new files won't exist)
+          # Collect files that exist in base
           EXISTING=""
           for f in $CHANGED_FILES; do
-            if [ -f "$f" ]; then
-              EXISTING="$EXISTING $f"
+            if [ -f "$WORKTREE_DIR/$f" ]; then
+              EXISTING="$EXISTING $WORKTREE_DIR/$f"
+            else
+              echo "File not in base (new file): $f"
             fi
           done
 
           if [ -n "$EXISTING" ]; then
-            BASE_JSON=$(bundle exec solid-score $EXISTING --format json --min-score 0 2>/dev/null) || true
+            echo "Analyzing base files: $EXISTING"
+            TMPJSON=$(mktemp)
+            bundle exec solid-score $EXISTING --format json --min-score 0 > "$TMPJSON" 2>/dev/null || true
+            BASE_JSON=$(cat "$TMPJSON")
+            rm -f "$TMPJSON"
+            echo "$BASE_JSON"
           else
+            echo "No files existed in base"
             BASE_JSON="{}"
           fi
 
-          git checkout HEAD -- . || true
-          git stash pop || true
+          git worktree remove "$WORKTREE_DIR" --force 2>/dev/null || true
+          echo "::endgroup::"
 
           {
             echo "json<<SOLID_SCORE_EOF"
