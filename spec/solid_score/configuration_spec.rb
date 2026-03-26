@@ -51,6 +51,42 @@ RSpec.describe SolidScore::Configuration do
     end
   end
 
+  describe "preset support" do
+    it "applies Rails preset values" do
+      Dir.mktmpdir do |dir|
+        config_path = File.join(dir, ".solid-score.yml")
+        File.write(config_path, <<~YAML)
+          preset: rails
+        YAML
+
+        config = described_class.from_file(config_path)
+
+        expect(config.paths).to include("app/models", "app/controllers")
+        expect(config.exclude).to include("spec/**", "vendor/**")
+        expect(config.weights[:dip]).to eq(0.30)
+        expect(config.dip_whitelist).to include("Rails", "Logger")
+      end
+    end
+
+    it "allows explicit YAML to override preset" do
+      Dir.mktmpdir do |dir|
+        config_path = File.join(dir, ".solid-score.yml")
+        File.write(config_path, <<~YAML)
+          preset: rails
+          paths:
+            - app/models
+          weights:
+            srp: 0.50
+        YAML
+
+        config = described_class.from_file(config_path)
+
+        expect(config.paths).to eq(["app/models"])
+        expect(config.weights[:srp]).to eq(0.50)
+      end
+    end
+  end
+
   describe "#merge_cli_options" do
     it "overrides config with CLI options" do
       config = described_class.default

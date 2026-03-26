@@ -23,6 +23,14 @@ RSpec.describe SolidScore::CLI do
       expect(parsed["classes"]).to be_an(Array)
     end
 
+    it "supports --format html" do
+      cli = described_class.new
+      output = capture_stdout { cli.run([fixtures_path, "--format", "html"]) }
+
+      expect(output).to include("<!DOCTYPE html>")
+      expect(output).to include("solid-score Report")
+    end
+
     it "supports --version" do
       cli = described_class.new
       output = capture_stdout { cli.run(["--version"]) }

@@ -1,0 +1,141 @@
+name: "solid-score"
+description: "Run SOLID principles scoring on Ruby code"
+branding:
+  icon: "check-circle"
+  color: "green"
+
+inputs:
+  ruby-version:
+    description: "Ruby version to use"
+    required: false
+    default: "3.2"
+  min-score:
+    description: "Minimum total score threshold (0-100)"
+    required: false
+    default: "0"
+  format:
+    description: "Output format (text|json|html)"
+    required: false
+    default: "text"
+  paths:
+    description: "Paths to analyze (space-separated)"
+    required: false
+    default: "."
+  config:
+    description: "Path to .solid-score.yml"
+    required: false
+    default: ".solid-score.yml"
+  gem-version:
+    description: "solid_score gem version (or 'latest')"
+    required: false
+    default: "latest"
+  pr-comment:
+    description: "Post score report as PR comment (true|false)"
+    required: false
+    default: "false"
+  diff-ref:
+    description: "Base ref for diff comparison (used with pr-comment)"
+    required: false
+    default: "origin/main"
+
+outputs:
+  score-json:
+    description: "Score results in JSON format"
+    value: ${{ steps.run.outputs.score-json }}
+  passing:
+    description: "Whether all scores meet thresholds (true|false)"
+    value: ${{ steps.run.outputs.passing }}
+  average-score:
+    description: "Average total score"
+    value: ${{ steps.run.outputs.average-score }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: ${{ inputs.ruby-version }}
+
+    - name: Install solid_score
+      shell: bash
+      env:
+        GEM_VERSION: ${{ inputs.gem-version }}
+      run: |
+        if [ "$GEM_VERSION" = "latest" ]; then
+          gem install solid_score
+        else
+          gem install solid_score -v "$GEM_VERSION"
+        fi
+
+    - name: Run solid-score
+      id: run
+      shell: bash
+      env:
+        INPUT_PATHS: ${{ inputs.paths }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_MIN_SCORE: ${{ inputs.min-score }}
+        INPUT_FORMAT: ${{ inputs.format }}
+      run: |
+        EXIT_CODE=0
+
+        # Capture JSON output for outputs (stderr separated)
+        JSON_OUTPUT=$(solid-score $INPUT_PATHS \
+          --format json \
+          --config "$INPUT_CONFIG" \
+          --min-score "$INPUT_MIN_SCORE") || EXIT_CODE=$?
+
+        # Set outputs
+        {
+          echo "score-json<<SOLID_SCORE_EOF"
+          echo "$JSON_OUTPUT"
+          echo "SOLID_SCORE_EOF"
+        } >> "$GITHUB_OUTPUT"
+
+        AVG=$(echo "$JSON_OUTPUT" | ruby -rjson -e 'puts JSON.parse(STDIN.read)["summary"]["average_score"]' 2>/dev/null || echo "0")
+        echo "average-score=$AVG" >> "$GITHUB_OUTPUT"
+
+        if [ "$EXIT_CODE" -eq 0 ]; then
+          echo "passing=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "passing=false" >> "$GITHUB_OUTPUT"
+        fi
+
+        # Display in user-specified format
+        if [ "$INPUT_FORMAT" != "json" ]; then
+          solid-score $INPUT_PATHS \
+            --format "$INPUT_FORMAT" \
+            --config "$INPUT_CONFIG" \
+            --min-score "$INPUT_MIN_SCORE" || true
+        else
+          echo "$JSON_OUTPUT"
+        fi
+
+        exit $EXIT_CODE
+
+    - name: Post PR comment
+      if: always() && inputs.pr-comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SCORE_JSON: ${{ steps.run.outputs.score-json }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        COMMENT=$(echo "$SCORE_JSON" | ruby "$ACTION_PATH/scripts/generate-pr-comment.rb")
+
+        # Check for existing comment to update
+        EXISTING_COMMENT_ID=$(gh api \
+          "repos/$REPO/issues/$PR_NUMBER/comments" \
+          --jq '.[] | select(.body | contains("<!-- solid-score-report -->")) | .id' \
+          2>/dev/null | head -1)
+
+        if [ -n "$EXISTING_COMMENT_ID" ]; then
+          gh api \
+            --method PATCH \
+            "repos/$REPO/issues/comments/$EXISTING_COMMENT_ID" \
+            -f body="$COMMENT"
+        else
+          gh pr comment "$PR_NUMBER" --body "$COMMENT"
+        fi
