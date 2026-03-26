@@ -1,0 +1,36 @@
+SolidScore/TotalScore:
+  Description: "Checks that each class/module meets a minimum SOLID total score."
+  Enabled: true
+  MinScore: 70
+  Weights:
+    srp: 0.30
+    ocp: 0.15
+    lsp: 0.10
+    isp: 0.20
+    dip: 0.25
+  DipWhitelist: []
+
+SolidScore/SingleResponsibility:
+  Description: "Checks that each class/module meets a minimum SRP score."
+  Enabled: false
+  MinScore: 60
+
+SolidScore/OpenClosed:
+  Description: "Checks that each class/module meets a minimum OCP score."
+  Enabled: false
+  MinScore: 50
+
+SolidScore/LiskovSubstitution:
+  Description: "Checks that each class/module meets a minimum LSP score."
+  Enabled: false
+  MinScore: 60
+
+SolidScore/InterfaceSegregation:
+  Description: "Checks that each class/module meets a minimum ISP score."
+  Enabled: false
+  MinScore: 70
+
+SolidScore/DependencyInversion:
+  Description: "Checks that each class/module meets a minimum DIP score."
+  Enabled: false
+  MinScore: 65

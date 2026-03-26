@@ -13,6 +13,7 @@ A static analysis tool that scores Ruby classes and modules against SOLID princi
 - **Git Diff Mode**: Analyze only changed files to prevent score regression
 - **Configurable Thresholds**: Set minimum scores for CI quality gates
 - **Customizable Weights**: Adjust the importance of each principle in the total score
+- **RuboCop Integration**: Use as RuboCop cops for seamless linting workflow
 
 ## Installation
 
@@ -315,6 +316,54 @@ jobs:
 
       - name: Check score regression (diff mode)
         run: solid-score . --diff origin/main --max-decrease 5
+```
+
+### RuboCop Integration
+
+Add `rubocop-solid_score` to your `.rubocop.yml` to run SOLID score checks as part of your existing RuboCop workflow:
+
+```yaml
+# .rubocop.yml
+require:
+  - rubocop-solid_score
+```
+
+#### Available Cops
+
+| Cop | Default | Description |
+|-----|---------|-------------|
+| `SolidScore/TotalScore` | Enabled (70) | Checks weighted total score |
+| `SolidScore/SingleResponsibility` | Disabled (60) | Checks SRP score |
+| `SolidScore/OpenClosed` | Disabled (50) | Checks OCP score |
+| `SolidScore/LiskovSubstitution` | Disabled (60) | Checks LSP score |
+| `SolidScore/InterfaceSegregation` | Disabled (70) | Checks ISP score |
+| `SolidScore/DependencyInversion` | Disabled (65) | Checks DIP score |
+
+#### Configuration
+
+```yaml
+# .rubocop.yml
+SolidScore/TotalScore:
+  Enabled: true
+  MinScore: 70
+  Weights:
+    srp: 0.30
+    ocp: 0.15
+    lsp: 0.10
+    isp: 0.20
+    dip: 0.25
+  DipWhitelist:
+    - Rails
+    - Logger
+
+# Enable individual principle checks
+SolidScore/SingleResponsibility:
+  Enabled: true
+  MinScore: 60
+
+SolidScore/DependencyInversion:
+  Enabled: true
+  MinScore: 65
 ```
 
 ### Exit Codes
