@@ -44,7 +44,13 @@ module SolidScore
 
     def excluded?(file)
       @config.exclude.any? do |pattern|
-        File.fnmatch?(pattern, file, File::FNM_PATHNAME | File::FNM_DOTMATCH)
+        # **/dir/** パターンは部分一致で処理（File.fnmatch?は絶対パスで非対応）
+        if pattern.start_with?("**/") && pattern.end_with?("/**")
+          dir = pattern.delete_prefix("**/").delete_suffix("/**")
+          file.include?("/#{dir}/")
+        else
+          File.fnmatch?(pattern, file, File::FNM_PATHNAME | File::FNM_DOTMATCH)
+        end
       end
     end
 
