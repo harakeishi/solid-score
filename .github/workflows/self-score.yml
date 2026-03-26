@@ -56,7 +56,7 @@ jobs:
         run: |
           echo "::group::solid-score current branch"
           echo "Analyzing: $CHANGED_FILES"
-          JSON_OUTPUT=$(bundle exec solid-score $CHANGED_FILES --format json --min-score 0 2>&1) || true
+          JSON_OUTPUT=$(bundle exec solid-score $CHANGED_FILES --format json --min-score 0 2>/dev/null) || true
           echo "$JSON_OUTPUT"
           echo "::endgroup::"
           {
@@ -95,7 +95,7 @@ jobs:
 
           if [ -n "$EXISTING" ]; then
             echo "Analyzing base files: $EXISTING"
-            BASE_JSON=$(bundle exec solid-score $EXISTING --format json --min-score 0 2>&1) || true
+            BASE_JSON=$(bundle exec solid-score $EXISTING --format json --min-score 0 2>/dev/null) || true
             echo "$BASE_JSON"
           else
             echo "No files existed in base"

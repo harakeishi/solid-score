@@ -72,8 +72,10 @@ module SolidScore
 
     # Caching responsibility (should be in a separate cache class)
     def generate_cache
+      require "fileutils"
+      require "json"
       cache_dir = File.join(Dir.home, ".solid-score", "cache")
-      FileUtils.mkdir_p(cache_dir) if defined?(FileUtils)
+      FileUtils.mkdir_p(cache_dir)
 
       @results.each do |result|
         cache_file = File.join(cache_dir, "#{result.class_name.gsub('::', '_')}.json")
@@ -87,7 +89,7 @@ module SolidScore
           total: result.total,
           cached_at: Time.now.iso8601
         }
-        File.write(cache_file, JSON.generate(data)) if defined?(JSON)
+        File.write(cache_file, JSON.generate(data))
       end
     end
 
