@@ -36,6 +36,19 @@ module SolidScore
         @user_whitelist = user_whitelist
       end
 
+      # Phase 2c: レイヤー別のDIPペナルティ重み
+      # Controller/Model ではDIP違反の影響度を軽減
+      # (Railsの標準パターンである Service.new.call, OtherModel.create を許容)
+      LAYER_DIP_WEIGHT = {
+        controller: 0.4,  # Service.new.call は標準パターン
+        model: 0.5,       # OtherModel.create は標準パターン
+        service: 1.0,     # DIが推奨される層
+        job: 0.6,         # Service呼び出しは許容
+        mailer: 0.5,      # Model参照は許容
+        lib: 1.0,         # DIが推奨される層
+        unknown: 1.0
+      }.freeze
+
       def analyze(class_info)
         concrete_deps = count_concrete_instantiations(class_info)
         injected_deps = count_injected_dependencies(class_info)
@@ -44,10 +57,13 @@ module SolidScore
         return 100 if total_deps.zero?
 
         concrete_ratio = concrete_deps.to_f / total_deps
-        score = 100 - (concrete_ratio * 100)
+
+        # Phase 2c: レイヤー別にペナルティの重みを調整
+        weight = layer_weight(class_info)
+        score = 100 - (concrete_ratio * 100 * weight)
 
         score += DI_BONUS if injected_deps.positive?
-        score -= ce_penalty(class_info)
+        score -= ce_penalty(class_info, weight)
 
         clamp_score(score)
       end
@@ -99,16 +115,22 @@ module SolidScore
         init.parameters.count { |type, _| %i[key keyreq kwarg kwoptarg kwrestarg].include?(type) }
       end
 
-      def ce_penalty(class_info)
+      def layer_weight(class_info)
+        LAYER_DIP_WEIGHT.fetch(class_info.layer, 1.0)
+      end
+
+      def ce_penalty(class_info, weight = 1.0)
         ce = count_concrete_instantiations(class_info)
 
-        if ce > 20
-          20
-        elsif ce > 10
-          10
-        else
-          0
-        end
+        raw = if ce > 20
+                20
+              elsif ce > 10
+                10
+              else
+                0
+              end
+
+        (raw * weight).round
       end
     end
   end

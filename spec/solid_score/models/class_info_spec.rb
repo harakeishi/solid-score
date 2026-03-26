@@ -70,4 +70,91 @@ RSpec.describe SolidScore::Models::ClassInfo do
       expect(class_info.data_class?).to be true
     end
   end
+
+  # Phase 2c: レイヤー判別
+  describe "#layer" do
+    it "detects controller layer from file_path" do
+      ci = described_class.new(name: "UsersController", file_path: "app/controllers/users_controller.rb")
+      expect(ci.layer).to eq(:controller)
+    end
+
+    it "detects model layer from file_path" do
+      ci = described_class.new(name: "User", file_path: "app/models/user.rb")
+      expect(ci.layer).to eq(:model)
+    end
+
+    it "detects service layer from file_path" do
+      ci = described_class.new(name: "UserService", file_path: "app/services/user_service.rb")
+      expect(ci.layer).to eq(:service)
+    end
+
+    it "detects lib layer from file_path" do
+      ci = described_class.new(name: "Client", file_path: "project/lib/api/client.rb")
+      expect(ci.layer).to eq(:lib)
+    end
+
+    it "falls back to superclass detection" do
+      ci = described_class.new(name: "User", file_path: "unknown/user.rb", superclass: "ApplicationRecord")
+      expect(ci.layer).to eq(:model)
+    end
+
+    it "returns :unknown when no match" do
+      ci = described_class.new(name: "Foo", file_path: "unknown/foo.rb")
+      expect(ci.layer).to eq(:unknown)
+    end
+  end
+
+  describe "#framework_base_class?" do
+    it "returns true for ApplicationRecord direct subclass" do
+      ci = described_class.new(name: "User", superclass: "ActiveRecord::Base")
+      expect(ci.framework_base_class?).to be true
+    end
+
+    it "returns true for ApplicationController direct subclass" do
+      ci = described_class.new(name: "Users", superclass: "ActionController::Base")
+      expect(ci.framework_base_class?).to be true
+    end
+
+    it "returns false for regular superclass" do
+      ci = described_class.new(name: "UserService", superclass: "BaseService")
+      expect(ci.framework_base_class?).to be false
+    end
+
+    it "returns false for ApplicationRecord subclass (indirect)" do
+      ci = described_class.new(name: "User", superclass: "ApplicationRecord")
+      expect(ci.framework_base_class?).to be false
+    end
+  end
+
+  describe "#http_client_pattern?" do
+    it "returns true when all public methods share a client ivar" do
+      m1 = SolidScore::Models::MethodInfo.new(
+        name: :get_user, visibility: :public,
+        instance_variables: [:@client], line_start: 1, line_end: 3
+      )
+      m2 = SolidScore::Models::MethodInfo.new(
+        name: :create_user, visibility: :public,
+        instance_variables: [:@client], line_start: 5, line_end: 7
+      )
+      ci = described_class.new(
+        name: "ApiClient",
+        methods: [init_method, m1, m2],
+        instance_variables: [:@client]
+      )
+      expect(ci.http_client_pattern?).to be true
+    end
+
+    it "returns false when methods don't share client ivar" do
+      m1 = SolidScore::Models::MethodInfo.new(
+        name: :process, visibility: :public,
+        instance_variables: [:@data], line_start: 1, line_end: 3
+      )
+      ci = described_class.new(
+        name: "Processor",
+        methods: [m1],
+        instance_variables: [:@data]
+      )
+      expect(ci.http_client_pattern?).to be false
+    end
+  end
 end

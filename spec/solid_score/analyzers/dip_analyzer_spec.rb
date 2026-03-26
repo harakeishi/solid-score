@@ -150,6 +150,57 @@ RSpec.describe SolidScore::Analyzers::DipAnalyzer do
       end
     end
 
+    # Phase 2c: レイヤー別ペナルティ
+    context "with layer-specific evaluation" do
+      it "applies reduced penalty for controller layer" do
+        method_call = SolidScore::Models::MethodCallInfo.new(
+          method_name: :new, receiver: "UserService", receiver_type: :const
+        )
+        method_info = SolidScore::Models::MethodInfo.new(
+          name: :create, method_calls: [method_call]
+        )
+
+        # Controller（file_path判別）
+        ctrl_class = SolidScore::Models::ClassInfo.new(
+          name: "UsersController",
+          file_path: "app/controllers/users_controller.rb",
+          methods: [method_info]
+        )
+
+        # Service（file_path判別）
+        svc_class = SolidScore::Models::ClassInfo.new(
+          name: "OrderService",
+          file_path: "app/services/order_service.rb",
+          methods: [method_info]
+        )
+
+        ctrl_score = analyzer.analyze(ctrl_class)
+        svc_score = analyzer.analyze(svc_class)
+
+        # Controllerの方がペナルティ緩和されるのでスコアが高い
+        expect(ctrl_score).to be > svc_score
+      end
+
+      it "applies reduced penalty for model layer" do
+        method_call = SolidScore::Models::MethodCallInfo.new(
+          method_name: :create, receiver: "AuditLog", receiver_type: :const
+        )
+        method_info = SolidScore::Models::MethodInfo.new(
+          name: :save_with_log, method_calls: [method_call]
+        )
+
+        model_class = SolidScore::Models::ClassInfo.new(
+          name: "User",
+          file_path: "app/models/user.rb",
+          methods: [method_info]
+        )
+
+        score = analyzer.analyze(model_class)
+        # Modelは緩和されるのでスコアが0にはならない (weight 0.5 → 50点)
+        expect(score).to be >= 50
+      end
+    end
+
     context "with standard library whitelist" do
       it "recognizes common standard library classes" do
         whitelisted = %w[Array Hash Set Time Date Mutex Thread Logger]
