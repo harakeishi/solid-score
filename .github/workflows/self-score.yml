@@ -19,16 +19,42 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Detect changed Ruby files
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_SHA="origin/main"
+          fi
+
+          CHANGED_FILES=$(git diff --name-only --diff-filter=ACMR "$BASE_SHA"...HEAD -- '*.rb' | grep -v '^spec/' | grep -v '^test/' || true)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No Ruby files changed, skipping analysis."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            # Save file list (newline-separated -> space-separated)
+            FILES=$(echo "$CHANGED_FILES" | tr '\n' ' ')
+            echo "files=$FILES" >> "$GITHUB_OUTPUT"
+            echo "Changed Ruby files: $FILES"
+          fi
+
       - name: Set up Ruby
+        if: steps.changed.outputs.skip != 'true'
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.4"
           bundler-cache: true
 
       - name: Run solid-score (current)
+        if: steps.changed.outputs.skip != 'true'
         id: current
+        env:
+          CHANGED_FILES: ${{ steps.changed.outputs.files }}
         run: |
-          JSON_OUTPUT=$(bundle exec solid-score lib/ --format json --min-score 0) || true
+          JSON_OUTPUT=$(bundle exec solid-score $CHANGED_FILES --format json --min-score 0) || true
           {
             echo "json<<SOLID_SCORE_EOF"
             echo "$JSON_OUTPUT"
@@ -36,13 +62,40 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Run solid-score (base - main)
+        if: steps.changed.outputs.skip != 'true'
         id: base
+        env:
+          CHANGED_FILES: ${{ steps.changed.outputs.files }}
         run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_SHA="origin/main"
+          fi
+
+          # Checkout base versions of changed files
           git stash --include-untracked || true
-          git checkout origin/main -- lib/ || true
-          BASE_JSON=$(bundle exec solid-score lib/ --format json --min-score 0 2>/dev/null) || true
-          git checkout - -- lib/ || true
+          for f in $CHANGED_FILES; do
+            git checkout "$BASE_SHA" -- "$f" 2>/dev/null || true
+          done
+
+          # Only analyze files that existed in base (new files won't exist)
+          EXISTING=""
+          for f in $CHANGED_FILES; do
+            if [ -f "$f" ]; then
+              EXISTING="$EXISTING $f"
+            fi
+          done
+
+          if [ -n "$EXISTING" ]; then
+            BASE_JSON=$(bundle exec solid-score $EXISTING --format json --min-score 0 2>/dev/null) || true
+          else
+            BASE_JSON="{}"
+          fi
+
+          git checkout HEAD -- . || true
           git stash pop || true
+
           {
             echo "json<<SOLID_SCORE_EOF"
             echo "$BASE_JSON"
@@ -50,11 +103,13 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Compare scores and generate comment
+        if: steps.changed.outputs.skip != 'true'
         id: compare
         shell: ruby {0}
         env:
           CURRENT_JSON: ${{ steps.current.outputs.json }}
           BASE_JSON: ${{ steps.base.outputs.json }}
+          CHANGED_FILES: ${{ steps.changed.outputs.files }}
         run: |
           require "json"
 
@@ -65,6 +120,7 @@ jobs:
           base_avg = base.dig("summary", "average_score") || 0.0
           diff = (current_avg - base_avg).round(2)
 
+          changed_files = (ENV["CHANGED_FILES"] || "").split
           current_classes = (current["classes"] || []).sort_by { |c| c["total"] }
           base_map = (base["classes"] || []).each_with_object({}) { |c, h| h[c["class_name"]] = c["total"] }
 
@@ -74,6 +130,11 @@ jobs:
 
           emoji = current_avg >= 80 ? "\u{1f7e2}" : current_avg >= 50 ? "\u{1f7e1}" : "\u{1f534}"
           lines << "## #{emoji} solid-score Report"
+          lines << ""
+          lines << "<details><summary>Analyzed #{changed_files.size} changed file(s)</summary>"
+          lines << ""
+          changed_files.each { |f| lines << "- `#{f}`" }
+          lines << "</details>"
           lines << ""
 
           # Summary
@@ -135,7 +196,7 @@ jobs:
           end
 
       - name: Post PR comment
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.changed.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           COMMENT: ${{ steps.compare.outputs.comment }}
@@ -156,7 +217,7 @@ jobs:
           fi
 
       - name: Post commit comment (push)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.changed.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           COMMENT: ${{ steps.compare.outputs.comment }}
@@ -167,7 +228,7 @@ jobs:
             -f body="$COMMENT"
 
       - name: Fail if degraded
-        if: steps.compare.outputs.degraded == 'true'
+        if: steps.changed.outputs.skip != 'true' && steps.compare.outputs.degraded == 'true'
         run: |
           echo "::error::SOLID score degradation detected! Current: ${{ steps.compare.outputs.current_avg }}, Base: ${{ steps.compare.outputs.base_avg }}"
           exit 1
