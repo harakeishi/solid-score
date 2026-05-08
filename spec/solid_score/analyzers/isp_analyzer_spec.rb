@@ -34,6 +34,76 @@ RSpec.describe SolidScore::Analyzers::IspAnalyzer do
         expect(score).to eq(100)
       end
     end
+    
+    # Issue #8: symmetric method pair detection
+    describe "#effective_public_method_count" do
+      def make_class(method_names)
+        methods = method_names.each_with_index.map do |name, i|
+          SolidScore::Models::MethodInfo.new(
+            name: name.to_sym, visibility: :public, line_start: i, line_end: i + 1
+          )
+        end
+        SolidScore::Models::ClassInfo.new(name: "Demo", methods: methods)
+      end
+
+      it "discounts one method from each matched symmetric pair" do
+        class_info = make_class(%i[enable_user disable_user start_job stop_job process])
+        # 5 methods, 2 pairs detected -> effective count = 3
+        expect(analyzer.send(:effective_public_method_count, class_info)).to eq(3)
+      end
+
+      it "requires the suffix to match exactly" do
+        class_info = make_class(%i[enable_user disable_admin])
+        expect(analyzer.send(:effective_public_method_count, class_info)).to eq(2)
+      end
+
+      it "supports the documented prefix list" do
+        names = %i[
+          encrypt_payload decrypt_payload
+          compress_blob decompress_blob
+          serialize_value deserialize_value
+          connect_db disconnect_db
+        ]
+        class_info = make_class(names)
+        expect(analyzer.send(:effective_public_method_count, class_info)).to eq(4)
+      end
+
+      it "leaves unrelated methods untouched" do
+        class_info = make_class(%i[foo bar baz])
+        expect(analyzer.send(:effective_public_method_count, class_info)).to eq(3)
+      end
+
+      it "does not pair bare prefixes without an underscore" do
+        # `enable` and `disable` (no suffix) must not pair with each other
+        class_info = make_class(%i[enable disable])
+        expect(analyzer.send(:effective_public_method_count, class_info)).to eq(2)
+      end
+
+      it "discounts each pair-prefix independently when suffixes overlap" do
+        # add_user / remove_user is one pair, create_user / delete_user is another.
+        # Both pairs should be detected, so 4 raw methods -> 2 effective.
+        class_info = make_class(%i[add_user remove_user create_user delete_user])
+        expect(analyzer.send(:effective_public_method_count, class_info)).to eq(2)
+      end
+    end
+
+    context "when symmetric pairs prevent the public-method-count penalty" do
+      it "scores higher than the equivalent unpaired class" do
+        paired_names = (1..5).flat_map { |i| [:"enable_resource_#{i}", :"disable_resource_#{i}"] }
+        paired_methods = paired_names.each_with_index.map do |n, i|
+          SolidScore::Models::MethodInfo.new(name: n, visibility: :public, line_start: i, line_end: i + 1)
+        end
+        paired_class = SolidScore::Models::ClassInfo.new(name: "Paired", methods: paired_methods)
+
+        unpaired_names = (1..10).map { |i| :"action_#{i}" }
+        unpaired_methods = unpaired_names.each_with_index.map do |n, i|
+          SolidScore::Models::MethodInfo.new(name: n, visibility: :public, line_start: i, line_end: i + 1)
+        end
+        unpaired_class = SolidScore::Models::ClassInfo.new(name: "Unpaired", methods: unpaired_methods)
+
+        expect(analyzer.analyze(paired_class)).to be > analyzer.analyze(unpaired_class)
+      end
+    end
 
     # Issue #7: linear public method scoring curve
     describe "#public_method_score (linear curve)" do
