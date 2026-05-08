@@ -21,9 +21,22 @@ module SolidScore
       dip: 0
     }.freeze
 
+    # Issue #14: extended tuning knobs
+    DEFAULT_DIFF_THRESHOLDS = {
+      ignore_below_delta: 0.0,
+      flag_only_structural_below: 0.0
+    }.freeze
+
+    DEFAULT_SCORING_OPTIONS = {
+      isp_public_method_curve: :linear,
+      case_when_2way_lenient: true
+    }.freeze
+
     attr_accessor :paths, :exclude, :format, :thresholds, :weights,
                   :diff_ref, :max_decrease, :new_class_min,
-                  :dip_whitelist
+                  :dip_whitelist,
+                  :inspection_class_patterns, :symmetric_method_pairs,
+                  :diff_thresholds, :scoring_options
 
     def initialize
       @paths = ["."]
@@ -35,6 +48,10 @@ module SolidScore
       @max_decrease = nil
       @new_class_min = nil
       @dip_whitelist = []
+      @inspection_class_patterns = []
+      @symmetric_method_pairs = []
+      @diff_thresholds = DEFAULT_DIFF_THRESHOLDS.dup
+      @scoring_options = DEFAULT_SCORING_OPTIONS.dup
     end
 
     def self.default
@@ -65,6 +82,8 @@ module SolidScore
         @dip_whitelist = yaml["dip"]["whitelist"] || []
       end
 
+      apply_extended_keys(yaml)
+
       return unless yaml["diff"]
 
       @max_decrease = yaml["diff"]["max_decrease"]
@@ -93,6 +112,20 @@ module SolidScore
       @exclude = preset[:exclude] if preset[:exclude]
       preset[:weights]&.each { |k, v| @weights[k] = v }
       @dip_whitelist = preset[:dip_whitelist] if preset[:dip_whitelist]
+    end
+
+    def apply_extended_keys(yaml)
+      @inspection_class_patterns = yaml["inspection_classes"] if yaml["inspection_classes"]
+
+      if yaml["symmetric_method_pairs"]&.dig("custom")
+        @symmetric_method_pairs = yaml["symmetric_method_pairs"]["custom"]
+      end
+
+      yaml["diff_thresholds"]&.each { |k, v| @diff_thresholds[k.to_sym] = v }
+
+      yaml["scoring"]&.each do |k, v|
+        @scoring_options[k.to_sym] = v.is_a?(String) ? v.to_sym : v
+      end
     end
   end
 end
