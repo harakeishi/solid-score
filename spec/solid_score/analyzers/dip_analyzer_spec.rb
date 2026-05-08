@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "tmpdir"
 
 RSpec.describe SolidScore::Analyzers::DipAnalyzer do
   let(:parser) { SolidScore::Parser::RubyParser.new }
@@ -147,6 +148,132 @@ RSpec.describe SolidScore::Analyzers::DipAnalyzer do
 
         score = custom_analyzer.analyze(class_info)
         expect(score).to be < 100
+      end
+    end
+
+    # Issue #12: memoized factory bonus
+    context "with memoized factory pattern" do
+      it "rewards @service ||= ServiceClass.new patterns" do
+        classes = parser.parse_file("#{fixtures_path}/memoized_factory.rb")
+        controller = classes.first
+
+        # Controller has 2 memoized factories with cyclomatic_complexity 1
+        # → 2 * 5pt = 10pt bonus
+        # Without bonus the controller would be penalised for the
+        # ProvisioningService.new / CustomerRepository.new concrete deps.
+        bonus = analyzer.send(:memoized_factory_bonus, controller)
+        expect(bonus).to eq(10)
+      end
+
+      it "caps the bonus at 15pt" do
+        methods = (1..5).map do |i|
+          SolidScore::Models::MethodInfo.new(
+            name: :"service_#{i}", visibility: :private,
+            cyclomatic_complexity: 1, memoized_factory: true
+          )
+        end
+        class_info = SolidScore::Models::ClassInfo.new(name: "Demo", methods: methods)
+        expect(analyzer.send(:memoized_factory_bonus, class_info)).to eq(15)
+      end
+
+      it "ignores non-memoized methods" do
+        method = SolidScore::Models::MethodInfo.new(
+          name: :ordinary, cyclomatic_complexity: 1, memoized_factory: false
+        )
+        class_info = SolidScore::Models::ClassInfo.new(name: "Demo", methods: [method])
+        expect(analyzer.send(:memoized_factory_bonus, class_info)).to eq(0)
+      end
+
+      it "ignores memoized methods with cyclomatic complexity > 1" do
+        method = SolidScore::Models::MethodInfo.new(
+          name: :complex, cyclomatic_complexity: 3, memoized_factory: true
+        )
+        class_info = SolidScore::Models::ClassInfo.new(name: "Demo", methods: [method])
+        expect(analyzer.send(:memoized_factory_bonus, class_info)).to eq(0)
+      end
+
+      # Issue #12 follow-up: stdlib classes must not earn a DI-style bonus.
+      it "does not reward standard-library factories" do
+        method = SolidScore::Models::MethodInfo.new(
+          name: :queue, cyclomatic_complexity: 1,
+          memoized_factory_receiver: "Queue"
+        )
+        class_info = SolidScore::Models::ClassInfo.new(name: "Demo", methods: [method])
+        expect(analyzer.send(:memoized_factory_bonus, class_info)).to eq(0)
+      end
+
+      it "does not reward namespaced standard-library factories" do
+        method = SolidScore::Models::MethodInfo.new(
+          name: :http, cyclomatic_complexity: 1,
+          memoized_factory_receiver: "Net::HTTP"
+        )
+        class_info = SolidScore::Models::ClassInfo.new(name: "Demo", methods: [method])
+        expect(analyzer.send(:memoized_factory_bonus, class_info)).to eq(0)
+      end
+
+      it "respects user_whitelist for memoized factories" do
+        custom_analyzer = described_class.new(user_whitelist: ["Redis"])
+        method = SolidScore::Models::MethodInfo.new(
+          name: :redis, cyclomatic_complexity: 1,
+          memoized_factory_receiver: "Redis"
+        )
+        class_info = SolidScore::Models::ClassInfo.new(name: "Demo", methods: [method])
+        expect(custom_analyzer.send(:memoized_factory_bonus, class_info)).to eq(0)
+      end
+
+      it "rewards namespaced custom service factories" do
+        method = SolidScore::Models::MethodInfo.new(
+          name: :svc, cyclomatic_complexity: 1,
+          memoized_factory_receiver: "Foo::Bar"
+        )
+        class_info = SolidScore::Models::ClassInfo.new(name: "Demo", methods: [method])
+        expect(analyzer.send(:memoized_factory_bonus, class_info)).to eq(5)
+      end
+    end
+
+    # Issue #12 follow-up: parser-level coverage for the broader factory set.
+    context "memoized factory parser detection" do
+      def parse_method(source)
+        Dir.mktmpdir do |dir|
+          path = File.join(dir, "tmp.rb")
+          File.write(path, source)
+          parser.parse_file(path).first.methods.first
+        end
+      end
+
+      it "detects @x ||= Foo.create style factories" do
+        m = parse_method(<<~RUBY)
+          class Demo
+            def factory
+              @x ||= Order.create(params)
+            end
+          end
+        RUBY
+        expect(m.memoized_factory?).to be true
+        expect(m.memoized_factory_receiver).to eq("Order")
+      end
+
+      it "detects @x ||= Foo::Bar.new style factories" do
+        m = parse_method(<<~RUBY)
+          class Demo
+            def factory
+              @x ||= Foo::Bar.new
+            end
+          end
+        RUBY
+        expect(m.memoized_factory?).to be true
+        expect(m.memoized_factory_receiver).to eq("Foo::Bar")
+      end
+
+      it "ignores non-factory method names like update" do
+        m = parse_method(<<~RUBY)
+          class Demo
+            def factory
+              @x ||= Order.update(params)
+            end
+          end
+        RUBY
+        expect(m.memoized_factory?).to be false
       end
     end
 

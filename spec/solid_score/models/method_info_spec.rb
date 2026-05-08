@@ -55,6 +55,18 @@ RSpec.describe SolidScore::Models::MethodInfo do
     end
   end
 
+  describe "#memoized_factory?" do
+    it "defaults to false" do
+      method_info = described_class.new(name: :foo)
+      expect(method_info.memoized_factory?).to be false
+    end
+
+    it "returns true when memoized_factory: true is provided" do
+      method_info = described_class.new(name: :svc, memoized_factory: true)
+      expect(method_info.memoized_factory?).to be true
+    end
+  end
+
   describe "#effective_statement_count" do
     it "defaults to zero when not provided" do
       method_info = described_class.new(name: :foo)
