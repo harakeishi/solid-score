@@ -89,6 +89,8 @@ RSpec.describe SolidScore::Configuration do
 
   # Issue #14: extended tuning knobs
   describe "extended configuration keys" do
+    before { allow(Kernel).to receive(:warn) }
+
     it "loads inspection_classes" do
       Dir.mktmpdir do |dir|
         config_path = File.join(dir, ".solid-score.yml")
@@ -156,6 +158,50 @@ RSpec.describe SolidScore::Configuration do
         isp_public_method_curve: :linear,
         case_when_2way_lenient: true
       )
+    end
+
+    # Issue #14 follow-up review feedback.
+    it "preserves untouched diff_thresholds defaults on partial override" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, ".solid-score.yml")
+        File.write(path, "diff_thresholds:\n  ignore_below_delta: 5.0\n")
+        config = described_class.from_file(path)
+        expect(config.diff_thresholds[:ignore_below_delta]).to eq(5.0)
+        # Default remains for the key the user didn't override.
+        expect(config.diff_thresholds[:flag_only_structural_below]).to eq(0.0)
+      end
+    end
+
+    it "normalizes scoring string values case-insensitively" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, ".solid-score.yml")
+        File.write(path, "scoring:\n  isp_public_method_curve: Linear\n")
+        config = described_class.from_file(path)
+        expect(config.scoring_options[:isp_public_method_curve]).to eq(:linear)
+      end
+    end
+
+    it "tolerates malformed extended values without raising" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, ".solid-score.yml")
+        File.write(path, <<~YAML)
+          scoring: "yes"
+          diff_thresholds:
+            - 1
+            - 2
+          symmetric_method_pairs: "bogus"
+        YAML
+        expect { described_class.from_file(path) }.not_to raise_error
+      end
+    end
+
+    it "emits a warning when an unwired extended key is provided" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, ".solid-score.yml")
+        File.write(path, "inspection_classes: [\"*::Inspect\"]\n")
+        expect(Kernel).to receive(:warn).with(/inspection_classes/)
+        described_class.from_file(path)
+      end
     end
   end
 

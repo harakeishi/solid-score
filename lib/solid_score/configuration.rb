@@ -114,18 +114,46 @@ module SolidScore
       @dip_whitelist = preset[:dip_whitelist] if preset[:dip_whitelist]
     end
 
+    # Issue #14: keys parsed by apply_extended_keys but not yet wired into
+    # the analyzers. Setting any of them is currently a no-op; the runtime
+    # emits a one-time warning so users know their config has no effect yet.
+    UNWIRED_EXTENDED_KEYS = %w[
+      inspection_classes
+      symmetric_method_pairs
+      diff_thresholds
+      scoring
+    ].freeze
+
     def apply_extended_keys(yaml)
-      @inspection_class_patterns = yaml["inspection_classes"] if yaml["inspection_classes"]
+      @inspection_class_patterns = Array(yaml["inspection_classes"]) if yaml["inspection_classes"]
 
-      if yaml["symmetric_method_pairs"]&.dig("custom")
-        @symmetric_method_pairs = yaml["symmetric_method_pairs"]["custom"]
-      end
+      custom_pairs = yaml["symmetric_method_pairs"].is_a?(Hash) &&
+                     yaml["symmetric_method_pairs"]["custom"]
+      @symmetric_method_pairs = custom_pairs if custom_pairs
 
-      yaml["diff_thresholds"]&.each { |k, v| @diff_thresholds[k.to_sym] = v }
+      diff_thresholds = yaml["diff_thresholds"]
+      diff_thresholds.each { |k, v| @diff_thresholds[k.to_sym] = v } if diff_thresholds.is_a?(Hash)
 
-      yaml["scoring"]&.each do |k, v|
-        @scoring_options[k.to_sym] = v.is_a?(String) ? v.to_sym : v
-      end
+      scoring = yaml["scoring"]
+      scoring.each { |k, v| @scoring_options[k.to_sym] = normalize_scoring_value(v) } if scoring.is_a?(Hash)
+
+      warn_unwired_keys(yaml)
+    end
+
+    def normalize_scoring_value(value)
+      return value.downcase.to_sym if value.is_a?(String)
+
+      value
+    end
+
+    def warn_unwired_keys(yaml)
+      present = UNWIRED_EXTENDED_KEYS.select { |k| yaml.key?(k) }
+      return if present.empty?
+
+      Kernel.warn(
+        "[solid_score] .solid-score.yml keys parsed but not yet wired " \
+          "into the analyzers: #{present.join(", ")} (tracked as a follow-up)."
+      )
     end
   end
 end
