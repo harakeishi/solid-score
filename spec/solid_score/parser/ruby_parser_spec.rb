@@ -72,6 +72,30 @@ RSpec.describe SolidScore::Parser::RubyParser do
       expect(calculate_method.called_methods).to include(:tax_amount)
     end
 
+    # Issue #10: effective statement count
+    context "effective statement counting" do
+      it "counts AST statement nodes for each method" do
+        parser = described_class.new
+        classes = parser.parse_file("#{fixtures_path}/raise_compact.rb")
+        method = classes.first.methods.find { |m| m.name == :renew }
+        expect(method.effective_statement_count).to be > 0
+      end
+
+      it "stays close for stylistic-only changes" do
+        parser = described_class.new
+        compact = parser.parse_file("#{fixtures_path}/raise_compact.rb").first
+        expanded = parser.parse_file("#{fixtures_path}/raise_expanded.rb").first
+
+        compact_total = compact.methods.sum(&:effective_statement_count)
+        expanded_total = expanded.methods.sum(&:effective_statement_count)
+
+        # Reformatting raise X, msg into raise X.new(msg) only adds one more
+        # :send node; the totals stay within a single-statement difference,
+        # which is well below the SRP penalty thresholds (100 / 200).
+        expect((compact_total - expanded_total).abs).to be <= 1
+      end
+    end
+
     # Phase 1 改善: case/when 分岐カウントのテスト
     context "case/when branch counting" do
       it "counts case/when branches in methods" do

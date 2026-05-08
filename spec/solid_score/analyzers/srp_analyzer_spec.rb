@@ -78,6 +78,67 @@ RSpec.describe SolidScore::Analyzers::SrpAnalyzer do
       end
     end
 
+    # Issue #10: effective_statement_count replaces line_count_penalty
+    context "with stylistic-only refactor (raise expanded)" do
+      it "produces the same SRP score for compact vs expanded raise styles" do
+        compact = parser.parse_file("#{fixtures_path}/raise_compact.rb").first
+        expanded = parser.parse_file("#{fixtures_path}/raise_expanded.rb").first
+
+        expect(analyzer.analyze(expanded)).to eq(analyzer.analyze(compact))
+      end
+    end
+
+    # Issue #10 follow-up: explicit threshold-firing tests so a regression in
+    # parser.count_effective_statements (e.g. miscounting :case+:when) cannot
+    # silently move scores.
+    context "with effective_statement_count thresholds" do
+      def class_with_total(total)
+        SolidScore::Models::ClassInfo.new(
+          name: "Demo",
+          methods: [
+            SolidScore::Models::MethodInfo.new(
+              name: :run, visibility: :public, line_start: 1, line_end: 2,
+              effective_statement_count: total
+            )
+          ]
+        )
+      end
+
+      it "applies no penalty at the LOW threshold (<=100)" do
+        expect(analyzer.send(:effective_statement_penalty, class_with_total(100))).to eq(0)
+      end
+
+      it "applies 10pt at the LOW threshold + 1 (101..200)" do
+        expect(analyzer.send(:effective_statement_penalty, class_with_total(101))).to eq(10)
+        expect(analyzer.send(:effective_statement_penalty, class_with_total(200))).to eq(10)
+      end
+
+      it "applies 20pt above the HIGH threshold (>200)" do
+        expect(analyzer.send(:effective_statement_penalty, class_with_total(201))).to eq(20)
+        expect(analyzer.send(:effective_statement_penalty, class_with_total(500))).to eq(20)
+      end
+    end
+
+    # Issue #9: inspection class mitigation
+    context "with inspection class" do
+      it "guarantees minimum score of 80 even when many low-cohesion methods exist" do
+        methods = (1..10).map do |i|
+          SolidScore::Models::MethodInfo.new(
+            name: :"check_#{i}", visibility: :public,
+            line_start: i * 10, line_end: i * 10 + 5,
+            instance_variables: [:"@var_#{i}"]
+          )
+        end
+        class_info = SolidScore::Models::ClassInfo.new(
+          name: "Muumuu::GoogleCloudChannel::Client::Inspect",
+          file_path: "app/inspectors/inspect.rb",
+          methods: methods
+        )
+        score = analyzer.analyze(class_info)
+        expect(score).to be >= 80
+      end
+    end
+
     # Phase 2c: 小規模クラスの補正
     context "with small class (<=3 methods)" do
       it "does not unfairly penalize small classes" do

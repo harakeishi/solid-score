@@ -55,6 +55,18 @@ RSpec.describe SolidScore::Models::MethodInfo do
     end
   end
 
+  describe "#effective_statement_count" do
+    it "defaults to zero when not provided" do
+      method_info = described_class.new(name: :foo)
+      expect(method_info.effective_statement_count).to eq(0)
+    end
+
+    it "stores the provided count" do
+      method_info = described_class.new(name: :foo, effective_statement_count: 7)
+      expect(method_info.effective_statement_count).to eq(7)
+    end
+  end
+
   describe "#empty?" do
     it "returns true when line_start equals line_end" do
       method_info = described_class.new(name: :foo, line_start: 5, line_end: 5)
