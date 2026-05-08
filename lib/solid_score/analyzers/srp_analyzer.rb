@@ -28,6 +28,9 @@ module SolidScore
         # Phase 2c: APIクライアントパターンの最低スコア保証
         score = mitigate_api_client(score, class_info)
 
+        # Issue #9: Inspection / diagnostic class minimum score
+        score = mitigate_inspection(score, class_info)
+
         clamp_score(score)
       end
 
@@ -125,6 +128,14 @@ module SolidScore
         return score unless class_info.http_client_pattern?
 
         [score, 80].max
+      end
+
+      INSPECTION_MIN_SCORE = 80
+
+      def mitigate_inspection(score, class_info)
+        return score unless class_info.inspection_class?
+
+        [score, INSPECTION_MIN_SCORE].max
       end
 
       def wmc_penalty(class_info)

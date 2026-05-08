@@ -35,6 +35,23 @@ RSpec.describe SolidScore::Analyzers::IspAnalyzer do
       end
     end
 
+    # Issue #9: inspection class mitigation
+    context "with inspection class" do
+      it "guarantees minimum score of 80 regardless of public method count" do
+        methods = (1..15).map do |i|
+          SolidScore::Models::MethodInfo.new(
+            name: :"check_#{i}", visibility: :public, line_start: i, line_end: i + 1
+          )
+        end
+        class_info = SolidScore::Models::ClassInfo.new(
+          name: "Muumuu::GoogleCloudChannel::Client::Inspect",
+          methods: methods
+        )
+        score = analyzer.analyze(class_info)
+        expect(score).to be >= 80
+      end
+    end
+
     # Phase 2a: フレームワークConcernの緩和
     context "with framework module includes" do
       it "applies reduced penalty for framework modules" do

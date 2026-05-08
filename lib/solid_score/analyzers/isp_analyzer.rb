@@ -20,6 +20,8 @@ module SolidScore
         Comparable Enumerable Singleton
       ].freeze
 
+      INSPECTION_MIN_SCORE = 80
+
       def analyze(class_info)
         public_methods = class_info.public_methods_list
         return 100 if public_methods.empty?
@@ -27,6 +29,7 @@ module SolidScore
         score = public_method_score(public_methods.size)
         score -= include_penalty(class_info)
         score -= cohesion_penalty(class_info)
+        score = mitigate_inspection(score, class_info)
 
         clamp_score(score)
       end
@@ -78,6 +81,12 @@ module SolidScore
         FRAMEWORK_MODULES.any? do |fm|
           module_name == fm || module_name.end_with?("::#{fm}")
         end
+      end
+
+      def mitigate_inspection(score, class_info)
+        return score unless class_info.inspection_class?
+
+        [score, INSPECTION_MIN_SCORE].max
       end
 
       def cohesion_penalty(class_info)
