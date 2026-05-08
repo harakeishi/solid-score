@@ -4,12 +4,15 @@ module SolidScore
   module Analyzers
     class IspAnalyzer < BaseAnalyzer
       # Issue #7: Linear interpolation between 5 and 25 public methods.
-      # 5 methods → 100, 25 methods → 20, slope -4pt per method.
+      # The floor count and floor score are derived from the three primary
+      # constants so a future tweak to SLOPE doesn't silently desync them.
       PUBLIC_METHOD_SCORE_CEILING = 100
-      PUBLIC_METHOD_SCORE_FLOOR = 20
       PUBLIC_METHOD_FREE_COUNT = 5
-      PUBLIC_METHOD_FLOOR_COUNT = 25
       PUBLIC_METHOD_SLOPE = 4
+      PUBLIC_METHOD_PENALISED_RANGE = 20 # methods 6..25 are penalised
+      PUBLIC_METHOD_FLOOR_COUNT = PUBLIC_METHOD_FREE_COUNT + PUBLIC_METHOD_PENALISED_RANGE
+      PUBLIC_METHOD_SCORE_FLOOR = PUBLIC_METHOD_SCORE_CEILING -
+                                  (PUBLIC_METHOD_PENALISED_RANGE * PUBLIC_METHOD_SLOPE)
 
       # Phase 2a: フレームワークConcern/標準ライブラリモジュール
       # これらのincludeはペナルティを緩和する
