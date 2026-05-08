@@ -68,8 +68,14 @@ module SolidScore
       # Issue #9: Inspection / diagnostic class detection.
       # Console-only or read-only diagnostic helpers grow naturally and should
       # not be penalised for their public surface.
+      #
+      # Suffixes are anchored with `\z` to avoid matching mid-word names
+      # (e.g. `DiagnosticReport` should not be treated as a diagnostic
+      # helper). `Tools` and `Debug` are intentionally narrow because they
+      # appear in many domain models.
       INSPECTION_NAME_PATTERNS = [
-        /Inspect\z/, /Console\z/, /Debug\z/, /Diagnostic/, /Tools\z/
+        /Inspect\z/, /Console\z/, /Debug\z/,
+        /Diagnostic\z/, /Diagnostics\z/, /Tools\z/
       ].freeze
       INSPECTION_PATH_PATTERN = %r{/(inspectors?|diagnostics?|debug)/}
 

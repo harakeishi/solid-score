@@ -3,6 +3,8 @@
 module SolidScore
   module Analyzers
     class SrpAnalyzer < BaseAnalyzer
+      include Mitigations
+
       LCOM4_SCORES = {
         1 => 100,
         2 => 60,
@@ -128,14 +130,6 @@ module SolidScore
         return score unless class_info.http_client_pattern?
 
         [score, 80].max
-      end
-
-      INSPECTION_MIN_SCORE = 80
-
-      def mitigate_inspection(score, class_info)
-        return score unless class_info.inspection_class?
-
-        [score, INSPECTION_MIN_SCORE].max
       end
 
       def wmc_penalty(class_info)
