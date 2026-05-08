@@ -37,13 +37,6 @@ RSpec.describe SolidScore::Models::ClassInfo do
     end
   end
 
-  describe "#line_count" do
-    it "calculates lines from start to end" do
-      class_info = described_class.new(name: "Foo", line_start: 1, line_end: 50)
-      expect(class_info.line_count).to eq(50)
-    end
-  end
-
   describe "#has_superclass?" do
     it "returns true when superclass is present" do
       class_info = described_class.new(name: "Foo", superclass: "Bar")

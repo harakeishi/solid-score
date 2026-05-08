@@ -35,10 +35,6 @@ module SolidScore
         methods.select { |m| m.public? && m.name != :initialize }
       end
 
-      def line_count
-        line_end - line_start + 1
-      end
-
       def has_superclass?
         !superclass.nil? && !superclass.empty?
       end

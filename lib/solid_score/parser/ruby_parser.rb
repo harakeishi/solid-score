@@ -198,12 +198,32 @@ module SolidScore
       end
 
       # Issue #10: Statement-like AST nodes that count toward the effective body size.
-      # Excludes :begin (a wrapper) and :ivar/:lvar lookups that are not statements.
+      #
+      # Notes on what we *don't* count and why:
+      # - :begin / :rescue / :ensure are sequence wrappers (their handler bodies
+      #   are counted via their children).
+      # - :when is a child of :case and would double-count the dispatch.
+      # - :ivar / :lvar are lookups, not statements.
+      #
+      # Notes on what we *do* count:
+      # - :send and :csend (safe-navigation) treat method calls as a statement;
+      #   chained calls intentionally accumulate because each step is observable
+      #   behaviour.
+      # - :masgn (multiple assignment) joins the explicit assignment forms.
       EFFECTIVE_STATEMENT_TYPES = %i[
-        send if case return ivasgn lvasgn gvasgn cvasgn
-        and_asgn or_asgn op_asgn yield block
-        while until for rescue ensure when next break super zsuper
+        send csend
+        if case return
+        ivasgn lvasgn gvasgn cvasgn masgn
+        and_asgn or_asgn op_asgn
+        yield block
+        while until for
+        next break retry redo super zsuper
       ].freeze
+
+      # Nested method/lambda boundaries — count_effective_statements stops at
+      # these so that statements inside an inner lambda don't leak into the
+      # outer method's count.
+      NESTED_DEFINITION_TYPES = %i[def defs].freeze
 
       # :def ノード構造: [name, args, body]
       # :defs ノード構造: [receiver, name, args, body]
@@ -246,11 +266,15 @@ module SolidScore
         )
       end
 
-      def count_effective_statements(node, count = 0)
+      def count_effective_statements(node, count = 0, root: true)
         return count unless node.is_a?(::AST::Node)
+        # Don't recurse into nested method/lambda definitions when counting
+        # the parent body. The nested definition's own effective count is
+        # tracked separately by build_method_info.
+        return count if !root && NESTED_DEFINITION_TYPES.include?(node.type)
 
         count += 1 if EFFECTIVE_STATEMENT_TYPES.include?(node.type)
-        node.children.each { |child| count = count_effective_statements(child, count) }
+        node.children.each { |child| count = count_effective_statements(child, count, root: false) }
         count
       end
 

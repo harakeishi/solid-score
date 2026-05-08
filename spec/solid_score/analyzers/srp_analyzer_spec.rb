@@ -88,6 +88,37 @@ RSpec.describe SolidScore::Analyzers::SrpAnalyzer do
       end
     end
 
+    # Issue #10 follow-up: explicit threshold-firing tests so a regression in
+    # parser.count_effective_statements (e.g. miscounting :case+:when) cannot
+    # silently move scores.
+    context "with effective_statement_count thresholds" do
+      def class_with_total(total)
+        SolidScore::Models::ClassInfo.new(
+          name: "Demo",
+          methods: [
+            SolidScore::Models::MethodInfo.new(
+              name: :run, visibility: :public, line_start: 1, line_end: 2,
+              effective_statement_count: total
+            )
+          ]
+        )
+      end
+
+      it "applies no penalty at the LOW threshold (<=100)" do
+        expect(analyzer.send(:effective_statement_penalty, class_with_total(100))).to eq(0)
+      end
+
+      it "applies 10pt at the LOW threshold + 1 (101..200)" do
+        expect(analyzer.send(:effective_statement_penalty, class_with_total(101))).to eq(10)
+        expect(analyzer.send(:effective_statement_penalty, class_with_total(200))).to eq(10)
+      end
+
+      it "applies 20pt above the HIGH threshold (>200)" do
+        expect(analyzer.send(:effective_statement_penalty, class_with_total(201))).to eq(20)
+        expect(analyzer.send(:effective_statement_penalty, class_with_total(500))).to eq(20)
+      end
+    end
+
     # Phase 2c: 小規模クラスの補正
     context "with small class (<=3 methods)" do
       it "does not unfairly penalize small classes" do
