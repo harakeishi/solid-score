@@ -95,6 +95,42 @@ RSpec.describe SolidScore::Analyzers::OcpAnalyzer do
       end
     end
 
+    # Issue #11: 2-way / 3-way case/when leniency
+    context "with light case/when usage" do
+      it "applies 2pt for a 2-way case (1 when clause)" do
+        method = SolidScore::Models::MethodInfo.new(name: :process, case_when_count: 1)
+        class_info = SolidScore::Models::ClassInfo.new(name: "Demo", methods: [method])
+        # base 100 - 2 = 98 (no other penalty for a single method without complexity)
+        expect(analyzer.analyze(class_info)).to eq(98)
+      end
+
+      it "applies 5pt for a 3-way case (2 when clauses)" do
+        method = SolidScore::Models::MethodInfo.new(name: :process, case_when_count: 2)
+        class_info = SolidScore::Models::ClassInfo.new(name: "Demo", methods: [method])
+        expect(analyzer.analyze(class_info)).to eq(95)
+      end
+
+      it "uses linear penalty for 4-way and more" do
+        method3 = SolidScore::Models::MethodInfo.new(name: :process, case_when_count: 3)
+        method4 = SolidScore::Models::MethodInfo.new(name: :process, case_when_count: 4)
+
+        c3 = SolidScore::Models::ClassInfo.new(name: "Demo3", methods: [method3])
+        c4 = SolidScore::Models::ClassInfo.new(name: "Demo4", methods: [method4])
+
+        # n*5 starting from n=3
+        expect(analyzer.analyze(c3)).to eq(85)
+        expect(analyzer.analyze(c4)).to eq(80)
+      end
+
+      it "accumulates penalties across methods" do
+        m1 = SolidScore::Models::MethodInfo.new(name: :a, case_when_count: 1)
+        m2 = SolidScore::Models::MethodInfo.new(name: :b, case_when_count: 1)
+        class_info = SolidScore::Models::ClassInfo.new(name: "Demo", methods: [m1, m2])
+        # 2pt + 2pt = 4pt
+        expect(analyzer.analyze(class_info)).to eq(96)
+      end
+    end
+
     context "with case_when_count in MethodInfo" do
       it "counts case/when branches correctly" do
         method_with_case = SolidScore::Models::MethodInfo.new(
