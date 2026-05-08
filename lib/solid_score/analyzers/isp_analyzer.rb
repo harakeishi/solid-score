@@ -10,6 +10,19 @@ module SolidScore
         [20, 40]
       ].freeze
 
+      # Issue #8: Symmetric prefix pairs.
+      # Methods like `enable_X` / `disable_X` describe one capability and should
+      # not double-count toward the public surface. Each prefix pair contributes
+      # at most one discount per matching suffix.
+      SYMMETRIC_PREFIXES = [
+        %w[enable disable], %w[start stop], %w[open close],
+        %w[add remove], %w[create delete], %w[show hide],
+        %w[lock unlock], %w[mount unmount], %w[register unregister],
+        %w[encrypt decrypt], %w[compress decompress],
+        %w[serialize deserialize], %w[connect disconnect],
+        %w[attach detach], %w[subscribe unsubscribe]
+      ].freeze
+
       # Phase 2a: フレームワークConcern/標準ライブラリモジュール
       # これらのincludeはペナルティを緩和する
       FRAMEWORK_MODULES = %w[
@@ -24,7 +37,7 @@ module SolidScore
         public_methods = class_info.public_methods_list
         return 100 if public_methods.empty?
 
-        score = public_method_score(public_methods.size)
+        score = public_method_score(effective_public_method_count(class_info))
         score -= include_penalty(class_info)
         score -= cohesion_penalty(class_info)
 
@@ -32,6 +45,19 @@ module SolidScore
       end
 
       private
+
+      def effective_public_method_count(class_info)
+        names = class_info.public_methods_list.map { |m| m.name.to_s }
+        names.size - symmetric_pair_count(names)
+      end
+
+      def symmetric_pair_count(names)
+        SYMMETRIC_PREFIXES.sum do |a, b|
+          a_suffixes = names.grep(/\A#{a}_/).map { |n| n.sub(/\A#{a}_/, "") }
+          b_suffixes = names.grep(/\A#{b}_/).map { |n| n.sub(/\A#{b}_/, "") }
+          (a_suffixes & b_suffixes).size
+        end
+      end
 
       def public_method_score(count)
         PUBLIC_METHOD_SCORES.each do |threshold, score|
