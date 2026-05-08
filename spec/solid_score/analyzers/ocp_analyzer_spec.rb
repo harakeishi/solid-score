@@ -163,6 +163,20 @@ RSpec.describe SolidScore::Analyzers::OcpAnalyzer do
         # Should cap at 30 points (MAX_CASE_WHEN_PENALTY)
         expect(score).to eq(70)
       end
+
+      # Issue #11 follow-up: under the per-method curve the cap still applies
+      # when many methods each contribute moderate-size case/when penalties.
+      it "caps the class-level penalty when accumulation across methods exceeds MAX" do
+        # 4 methods * 4 when-clauses each: per-method 4*5 = 20pt -> total raw 80pt,
+        # capped at MAX_CASE_WHEN_PENALTY = 30pt.
+        methods = (1..4).map do |i|
+          SolidScore::Models::MethodInfo.new(name: :"m_#{i}", case_when_count: 4)
+        end
+        class_info = SolidScore::Models::ClassInfo.new(name: "Big", methods: methods)
+        # density = (cyclomatic-1)*4 / 4 = 0 (default complexity 1) -> no density penalty
+        # case_when_penalty capped at 30 -> score 70
+        expect(analyzer.analyze(class_info)).to eq(70)
+      end
     end
   end
 end

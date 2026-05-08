@@ -67,12 +67,19 @@ module SolidScore
       # 1 when-clause   → 2pt   (2-way branch, often a minor domain conditional)
       # 2 when-clauses  → 5pt   (3-way branch, still acceptable)
       # 3+ when-clauses → n * 5pt (linear, real OCP smell)
+      #
+      # Note on the per-method shape: in earlier versions the score was driven
+      # by a class-wide pool of `when` clauses. With the per-method curve, a
+      # class containing many small 2-way conditionals will now score better
+      # than before, but the class-level cap (MAX_CASE_WHEN_PENALTY) still
+      # caps the contribution. This trade-off is intentional — wide n-way
+      # switches are still penalised heavily.
       def case_when_penalty(class_info)
-        raw = class_info.methods.sum { |m| per_method_case_when_penalty(m.case_when_count) }
+        raw = class_info.methods.sum { |m| case_when_penalty_for_count(m.case_when_count) }
         [raw, MAX_CASE_WHEN_PENALTY].min
       end
 
-      def per_method_case_when_penalty(when_count)
+      def case_when_penalty_for_count(when_count)
         case when_count
         when 0 then 0
         when 1 then 2
