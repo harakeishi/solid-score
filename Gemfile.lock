@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    solid_score (0.1.0)
+    solid_score (0.2.0)
       ast (~> 2.4)
       parser (~> 3.3)
 
