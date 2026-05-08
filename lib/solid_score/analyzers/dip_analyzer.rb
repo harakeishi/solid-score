@@ -9,6 +9,10 @@ module SolidScore
     class DipAnalyzer < BaseAnalyzer
       DI_BONUS = 15
 
+      # Issue #12: memoized factory bonus
+      MEMOIZED_FACTORY_BONUS_PER = 5
+      MEMOIZED_FACTORY_BONUS_MAX = 15
+
       # Phase 2b: .new 以外のファクトリメソッドも具象依存として検出
       FACTORY_METHODS = %i[new create build call open].freeze
 
@@ -53,8 +57,11 @@ module SolidScore
         concrete_deps = count_concrete_instantiations(class_info)
         injected_deps = count_injected_dependencies(class_info)
         total_deps = concrete_deps + injected_deps
+        bonus = memoized_factory_bonus(class_info)
 
-        return 100 if total_deps.zero?
+        if total_deps.zero?
+          return clamp_score(100 + bonus)
+        end
 
         concrete_ratio = concrete_deps.to_f / total_deps
 
@@ -64,6 +71,7 @@ module SolidScore
 
         score += DI_BONUS if injected_deps.positive?
         score -= ce_penalty(class_info, weight)
+        score += bonus
 
         clamp_score(score)
       end
@@ -113,6 +121,19 @@ module SolidScore
         # :kwrestarg = keyword rest argument (def foo(**kwargs))
         # Also check :key and :keyreq for backward compatibility
         init.parameters.count { |type, _| %i[key keyreq kwarg kwoptarg kwrestarg].include?(type) }
+      end
+
+      # Issue #12: Reward `@svc ||= ServiceClass.new(...)` style memoised
+      # factories, but skip standard-library / user-whitelisted classes so
+      # `@queue ||= Queue.new` doesn't earn a DI-style bonus.
+      def memoized_factory_bonus(class_info)
+        count = class_info.methods.count do |m|
+          next false unless m.memoized_factory? && m.cyclomatic_complexity == 1
+          next false if m.memoized_factory_receiver.nil?
+
+          !whitelisted_class?(m.memoized_factory_receiver)
+        end
+        [count * MEMOIZED_FACTORY_BONUS_PER, MEMOIZED_FACTORY_BONUS_MAX].min
       end
 
       def layer_weight(class_info)

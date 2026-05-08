@@ -197,6 +197,39 @@ module SolidScore
         end
       end
 
+      # Issue #12: factory-style method names that count as instantiation.
+      # Mirrors DipAnalyzer::FACTORY_METHODS so the bonus tracks the same set
+      # of patterns that are penalised as concrete dependencies.
+      MEMOIZED_FACTORY_METHODS = %i[new create build call open].freeze
+
+      # Issue #10: Statement-like AST nodes that count toward the effective body size.
+      #
+      # Notes on what we *don't* count and why:
+      # - :begin / :rescue / :ensure are sequence wrappers (their handler bodies
+      #   are counted via their children).
+      # - :when is a child of :case and would double-count the dispatch.
+      # - :ivar / :lvar are lookups, not statements.
+      #
+      # Notes on what we *do* count:
+      # - :send and :csend (safe-navigation) treat method calls as a statement;
+      #   chained calls intentionally accumulate because each step is observable
+      #   behaviour.
+      # - :masgn (multiple assignment) joins the explicit assignment forms.
+      EFFECTIVE_STATEMENT_TYPES = %i[
+        send csend
+        if case return
+        ivasgn lvasgn gvasgn cvasgn masgn
+        and_asgn or_asgn op_asgn
+        yield block
+        while until for
+        next break retry redo super zsuper
+      ].freeze
+
+      # Nested method/lambda boundaries — count_effective_statements stops at
+      # these so that statements inside an inner lambda don't leak into the
+      # outer method's count.
+      NESTED_DEFINITION_TYPES = %i[def defs].freeze
+
       # :def ノード構造: [name, args, body]
       # :defs ノード構造: [receiver, name, args, body]
       def build_method_info(node, visibility, kind: :instance)
@@ -208,11 +241,15 @@ module SolidScore
         method_calls = []
         calls_super = false
         case_when_count = 0
+        memoized_receiver = nil
+        effective_count = 0
 
         if body
           collect_method_details(body, instance_vars, called_methods, raises, method_calls)
           calls_super = contains_super?(body)
           case_when_count = count_case_when_branches(body)
+          memoized_receiver = detect_memoized_factory_receiver(body)
+          effective_count = count_effective_statements(body)
         end
 
         parameters = extract_parameters(args)
@@ -231,8 +268,55 @@ module SolidScore
           calls_super: calls_super,
           method_calls: method_calls,
           case_when_count: case_when_count,
-          kind: kind
+          kind: kind,
+          effective_statement_count: effective_count,
+          memoized_factory_receiver: memoized_receiver
         )
+      end
+
+      # Issue #12: Detects the `@ivar ||= ConstantClass.new(...)` memoised
+      # factory pattern (and the broader factory-method variants such as
+      # `.create`, `.build`, `.call`, `.open`). Returns the constant's
+      # qualified name (e.g. "ProvisioningService", "Foo::Bar") so the
+      # analyzer can apply the standard-library whitelist consistently
+      # with the concrete-dependency penalty path.
+      def detect_memoized_factory_receiver(node)
+        return nil unless node.is_a?(::AST::Node)
+
+        receiver = memoized_factory_receiver_for(node)
+        return receiver if receiver
+
+        node.children.each do |child|
+          found = detect_memoized_factory_receiver(child)
+          return found if found
+        end
+        nil
+      end
+
+      def memoized_factory_receiver_for(node)
+        return nil unless node.type == :or_asgn
+
+        lhs, rhs = node.children
+        return nil unless lhs.is_a?(::AST::Node) && lhs.type == :ivasgn
+        return nil unless rhs.is_a?(::AST::Node) && rhs.type == :send
+
+        receiver, method_name = rhs.children[0], rhs.children[1]
+        return nil unless receiver.is_a?(::AST::Node) && receiver.type == :const
+        return nil unless MEMOIZED_FACTORY_METHODS.include?(method_name)
+
+        extract_class_name(receiver)
+      end
+
+      def count_effective_statements(node, count = 0, root: true)
+        return count unless node.is_a?(::AST::Node)
+        # Don't recurse into nested method/lambda definitions when counting
+        # the parent body. The nested definition's own effective count is
+        # tracked separately by build_method_info.
+        return count if !root && NESTED_DEFINITION_TYPES.include?(node.type)
+
+        count += 1 if EFFECTIVE_STATEMENT_TYPES.include?(node.type)
+        node.children.each { |child| count = count_effective_statements(child, count, root: false) }
+        count
       end
 
       def extract_method_parts(node, kind)

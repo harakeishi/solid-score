@@ -3,6 +3,8 @@
 module SolidScore
   module Analyzers
     class SrpAnalyzer < BaseAnalyzer
+      include Mitigations
+
       LCOM4_SCORES = {
         1 => 100,
         2 => 60,
@@ -24,20 +26,22 @@ module SolidScore
         base_score = mitigate_data_class(base_score, class_info) if class_info.data_class?
 
         wmc = wmc_penalty(class_info)
-        line = line_count_penalty(class_info)
-        pre_mitigation = base_score - wmc - line
+        statement_penalty = effective_statement_penalty(class_info)
+        pre_mitigation = base_score - wmc - statement_penalty
 
         after_framework = mitigate_framework_base(pre_mitigation, class_info)
         after_api = mitigate_api_client(after_framework, class_info)
+        after_inspection = mitigate_inspection(after_api, class_info)
 
         {
-          score: clamp_score(after_api),
+          score: clamp_score(after_inspection),
           breakdown: {
             base: base_score,
             wmc_penalty: wmc,
-            line_count_penalty: line,
+            effective_statement_penalty: statement_penalty,
             mitigation_framework_base: after_framework - pre_mitigation,
-            mitigation_api_client: after_api - after_framework
+            mitigation_api_client: after_api - after_framework,
+            mitigation_inspection: after_inspection - after_api
           }
         }
       end
@@ -150,12 +154,19 @@ module SolidScore
         end
       end
 
-      def line_count_penalty(class_info)
-        lines = class_info.line_count
+      # Issue #10: Penalise based on effective statement count from the AST.
+      # Replaces the old line-count heuristic so that stylistic refactors
+      # (e.g. expanding `raise X, msg` into `if cond; raise X.new(msg); end`)
+      # do not change the SRP score when the semantics are unchanged.
+      EFFECTIVE_STATEMENT_HIGH_THRESHOLD = 200
+      EFFECTIVE_STATEMENT_LOW_THRESHOLD = 100
 
-        if lines > 400
+      def effective_statement_penalty(class_info)
+        total = class_info.methods.sum(&:effective_statement_count)
+
+        if total > EFFECTIVE_STATEMENT_HIGH_THRESHOLD
           20
-        elsif lines > 200
+        elsif total > EFFECTIVE_STATEMENT_LOW_THRESHOLD
           10
         else
           0

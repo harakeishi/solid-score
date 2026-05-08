@@ -38,8 +38,8 @@ RSpec.describe SolidScore::Scorer do
 
       expect(result.subscores).to have_key(:srp)
       expect(result.subscores[:srp]).to include(
-        :base, :wmc_penalty, :line_count_penalty,
-        :mitigation_framework_base, :mitigation_api_client
+        :base, :wmc_penalty, :effective_statement_penalty,
+        :mitigation_framework_base, :mitigation_api_client, :mitigation_inspection
       )
     end
   end
