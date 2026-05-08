@@ -52,6 +52,40 @@ RSpec.describe SolidScore::Analyzers::IspAnalyzer do
       end
     end
 
+    # Issue #7: linear public method scoring curve
+    describe "#public_method_score (linear curve)" do
+      context "when count <= 5" do
+        it "returns the ceiling" do
+          (0..5).each do |n|
+            expect(analyzer.send(:public_method_score, n)).to eq(100)
+          end
+        end
+      end
+
+      context "when count is between 6 and 24" do
+        it "applies a -4pt slope per method" do
+          expect(analyzer.send(:public_method_score, 6)).to eq(96)
+          expect(analyzer.send(:public_method_score, 7)).to eq(92)
+          expect(analyzer.send(:public_method_score, 10)).to eq(80)
+          expect(analyzer.send(:public_method_score, 24)).to eq(24)
+        end
+      end
+
+      context "when count >= 25" do
+        it "floors at 20" do
+          expect(analyzer.send(:public_method_score, 25)).to eq(20)
+          expect(analyzer.send(:public_method_score, 50)).to eq(20)
+          expect(analyzer.send(:public_method_score, 200)).to eq(20)
+        end
+      end
+
+      it "does not exhibit a 20pt cliff when crossing 5 -> 6" do
+        score5 = analyzer.send(:public_method_score, 5)
+        score6 = analyzer.send(:public_method_score, 6)
+        expect(score5 - score6).to eq(4)
+      end
+    end
+
     # Phase 2a: フレームワークConcernの緩和
     context "with framework module includes" do
       it "applies reduced penalty for framework modules" do
