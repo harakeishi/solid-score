@@ -22,7 +22,7 @@ module SolidScore
 
         score = base_score
         score -= wmc_penalty(class_info)
-        score -= line_count_penalty(class_info)
+        score -= effective_statement_penalty(class_info)
 
         # Phase 2c: フレームワーク基盤クラスの最低スコア保証
         score = mitigate_framework_base(score, class_info)
@@ -144,12 +144,19 @@ module SolidScore
         end
       end
 
-      def line_count_penalty(class_info)
-        lines = class_info.line_count
+      # Issue #10: Penalise based on effective statement count from the AST.
+      # Replaces the old line-count heuristic so that stylistic refactors
+      # (e.g. expanding `raise X, msg` into `if cond; raise X.new(msg); end`)
+      # do not change the SRP score when the semantics are unchanged.
+      EFFECTIVE_STATEMENT_HIGH_THRESHOLD = 200
+      EFFECTIVE_STATEMENT_LOW_THRESHOLD = 100
 
-        if lines > 400
+      def effective_statement_penalty(class_info)
+        total = class_info.methods.sum(&:effective_statement_count)
+
+        if total > EFFECTIVE_STATEMENT_HIGH_THRESHOLD
           20
-        elsif lines > 200
+        elsif total > EFFECTIVE_STATEMENT_LOW_THRESHOLD
           10
         else
           0
