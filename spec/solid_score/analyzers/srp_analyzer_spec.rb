@@ -78,6 +78,16 @@ RSpec.describe SolidScore::Analyzers::SrpAnalyzer do
       end
     end
 
+    # Issue #10: effective_statement_count replaces line_count_penalty
+    context "with stylistic-only refactor (raise expanded)" do
+      it "produces the same SRP score for compact vs expanded raise styles" do
+        compact = parser.parse_file("#{fixtures_path}/raise_compact.rb").first
+        expanded = parser.parse_file("#{fixtures_path}/raise_expanded.rb").first
+
+        expect(analyzer.analyze(expanded)).to eq(analyzer.analyze(compact))
+      end
+    end
+
     # Phase 2c: 小規模クラスの補正
     context "with small class (<=3 methods)" do
       it "does not unfairly penalize small classes" do

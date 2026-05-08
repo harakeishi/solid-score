@@ -197,6 +197,14 @@ module SolidScore
         end
       end
 
+      # Issue #10: Statement-like AST nodes that count toward the effective body size.
+      # Excludes :begin (a wrapper) and :ivar/:lvar lookups that are not statements.
+      EFFECTIVE_STATEMENT_TYPES = %i[
+        send if case return ivasgn lvasgn gvasgn cvasgn
+        and_asgn or_asgn op_asgn yield block
+        while until for rescue ensure when next break super zsuper
+      ].freeze
+
       # :def ノード構造: [name, args, body]
       # :defs ノード構造: [receiver, name, args, body]
       def build_method_info(node, visibility, kind: :instance)
@@ -208,11 +216,13 @@ module SolidScore
         method_calls = []
         calls_super = false
         case_when_count = 0
+        effective_count = 0
 
         if body
           collect_method_details(body, instance_vars, called_methods, raises, method_calls)
           calls_super = contains_super?(body)
           case_when_count = count_case_when_branches(body)
+          effective_count = count_effective_statements(body)
         end
 
         parameters = extract_parameters(args)
@@ -231,8 +241,17 @@ module SolidScore
           calls_super: calls_super,
           method_calls: method_calls,
           case_when_count: case_when_count,
-          kind: kind
+          kind: kind,
+          effective_statement_count: effective_count
         )
+      end
+
+      def count_effective_statements(node, count = 0)
+        return count unless node.is_a?(::AST::Node)
+
+        count += 1 if EFFECTIVE_STATEMENT_TYPES.include?(node.type)
+        node.children.each { |child| count = count_effective_statements(child, count) }
+        count
       end
 
       def extract_method_parts(node, kind)
