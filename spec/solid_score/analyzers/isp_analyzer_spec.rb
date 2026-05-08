@@ -72,20 +72,37 @@ RSpec.describe SolidScore::Analyzers::IspAnalyzer do
         class_info = make_class(%i[foo bar baz])
         expect(analyzer.send(:effective_public_method_count, class_info)).to eq(3)
       end
+
+      it "does not pair bare prefixes without an underscore" do
+        # `enable` and `disable` (no suffix) must not pair with each other
+        class_info = make_class(%i[enable disable])
+        expect(analyzer.send(:effective_public_method_count, class_info)).to eq(2)
+      end
+
+      it "discounts each pair-prefix independently when suffixes overlap" do
+        # add_user / remove_user is one pair, create_user / delete_user is another.
+        # Both pairs should be detected, so 4 raw methods -> 2 effective.
+        class_info = make_class(%i[add_user remove_user create_user delete_user])
+        expect(analyzer.send(:effective_public_method_count, class_info)).to eq(2)
+      end
     end
 
-    context "when symmetric pairs reduce the effective count below the cliff" do
-      it "scores higher than counting each method separately" do
-        names = (1..5).flat_map { |i| [:"enable_resource_#{i}", :"disable_resource_#{i}"] }
-        methods = names.each_with_index.map do |n, i|
+    context "when symmetric pairs prevent the public-method-count penalty" do
+      it "scores higher than the equivalent unpaired class" do
+        paired_names = (1..5).flat_map { |i| [:"enable_resource_#{i}", :"disable_resource_#{i}"] }
+        paired_methods = paired_names.each_with_index.map do |n, i|
           SolidScore::Models::MethodInfo.new(name: n, visibility: :public, line_start: i, line_end: i + 1)
         end
-        class_info = SolidScore::Models::ClassInfo.new(name: "ResourceManager", methods: methods)
+        paired_class = SolidScore::Models::ClassInfo.new(name: "Paired", methods: paired_methods)
 
-        # 10 raw methods, 5 pairs -> effective 5 -> ceiling 100 base score
-        expect(analyzer.send(:public_method_score,
-                             analyzer.send(:effective_public_method_count, class_info))).to eq(100)
+        unpaired_names = (1..10).map { |i| :"action_#{i}" }
+        unpaired_methods = unpaired_names.each_with_index.map do |n, i|
+          SolidScore::Models::MethodInfo.new(name: n, visibility: :public, line_start: i, line_end: i + 1)
         end
+        unpaired_class = SolidScore::Models::ClassInfo.new(name: "Unpaired", methods: unpaired_methods)
+
+        expect(analyzer.analyze(paired_class)).to be > analyzer.analyze(unpaired_class)
+      end
     end
 
     # Issue #7: linear public method scoring curve

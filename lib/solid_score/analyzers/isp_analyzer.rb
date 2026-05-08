@@ -54,8 +54,12 @@ module SolidScore
 
       def symmetric_pair_count(names)
         SYMMETRIC_PREFIXES.sum do |a, b|
-          a_suffixes = names.grep(/\A#{a}_/).map { |n| n.sub(/\A#{a}_/, "") }
-          b_suffixes = names.grep(/\A#{b}_/).map { |n| n.sub(/\A#{b}_/, "") }
+          # Regexp.escape so that future user-supplied prefixes (via
+          # .solid-score.yml) cannot inject unintended regex syntax.
+          a_re = /\A#{Regexp.escape(a)}_/
+          b_re = /\A#{Regexp.escape(b)}_/
+          a_suffixes = names.grep(a_re).map { |n| n.sub(a_re, "") }
+          b_suffixes = names.grep(b_re).map { |n| n.sub(b_re, "") }
           (a_suffixes & b_suffixes).size
         end
       end
