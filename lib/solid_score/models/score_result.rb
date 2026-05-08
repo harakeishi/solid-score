@@ -22,10 +22,11 @@ module SolidScore
 
       CONFIDENCE_ORDER = %i[low low_medium medium medium_high high].freeze
 
-      attr_reader :class_name, :file_path, :srp, :ocp, :lsp, :isp, :dip, :weights, :class_info
+      attr_reader :class_name, :file_path, :srp, :ocp, :lsp, :isp, :dip,
+                  :weights, :class_info, :subscores
 
       def initialize(class_name:, file_path: "", srp: 0.0, ocp: 0.0, lsp: 0.0, isp: 0.0, dip: 0.0,
-                     weights: DEFAULT_WEIGHTS, class_info: nil)
+                     weights: DEFAULT_WEIGHTS, class_info: nil, subscores: {})
         @class_name = class_name
         @file_path = file_path
         @srp = srp
@@ -35,6 +36,7 @@ module SolidScore
         @dip = dip
         @weights = weights
         @class_info = class_info
+        @subscores = subscores
       end
 
       def total

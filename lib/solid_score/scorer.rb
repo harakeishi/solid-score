@@ -12,16 +12,19 @@ module SolidScore
     end
 
     def score(class_info)
+      srp = @srp_analyzer.analyze_with_breakdown(class_info)
+
       Models::ScoreResult.new(
         class_name: class_info.name,
         file_path: class_info.file_path,
-        srp: @srp_analyzer.analyze(class_info),
+        srp: srp[:score],
         ocp: @ocp_analyzer.analyze(class_info),
         lsp: @lsp_analyzer.analyze(class_info),
         isp: @isp_analyzer.analyze(class_info),
         dip: @dip_analyzer.analyze(class_info),
         weights: @weights,
-        class_info: class_info
+        class_info: class_info,
+        subscores: { srp: srp[:breakdown] }
       )
     end
 

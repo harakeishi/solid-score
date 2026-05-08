@@ -27,7 +27,8 @@ module SolidScore
           isp: result.isp,
           dip: result.dip,
           total: result.total.round(1),
-          confidence: result.confidence.transform_values(&:to_s)
+          confidence: result.confidence.transform_values(&:to_s),
+          subscores: result.subscores
         }
       end
 

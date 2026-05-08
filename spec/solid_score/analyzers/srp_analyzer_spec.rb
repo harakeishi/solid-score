@@ -158,6 +158,39 @@ RSpec.describe SolidScore::Analyzers::SrpAnalyzer do
     end
   end
 
+  # Issue #13: breakdown for diff classification
+  describe "#analyze_with_breakdown" do
+    it "returns the score plus a breakdown hash" do
+      classes = parser.parse_file("#{fixtures_path}/good_srp.rb")
+      result = analyzer.analyze_with_breakdown(classes.first)
+
+      expect(result[:score]).to eq(analyzer.analyze(classes.first))
+      expect(result[:breakdown]).to be_a(Hash)
+      expect(result[:breakdown]).to include(
+        :base, :wmc_penalty, :effective_statement_penalty,
+        :mitigation_framework_base, :mitigation_api_client, :mitigation_inspection
+      )
+    end
+
+    it "reports a positive mitigation_framework_base for ApplicationController" do
+      class_info = SolidScore::Models::ClassInfo.new(
+        name: "ApplicationController",
+        superclass: "ActionController::Base",
+        file_path: "app/controllers/application_controller.rb",
+        methods: (1..6).map do |i|
+          SolidScore::Models::MethodInfo.new(
+            name: :"action_#{i}", visibility: :public,
+            line_start: i * 10, line_end: i * 10 + 5,
+            instance_variables: [:"@v_#{i}"]
+          )
+        end
+      )
+      breakdown = analyzer.analyze_with_breakdown(class_info)[:breakdown]
+      expect(breakdown[:mitigation_framework_base]).to be > 0
+      expect(breakdown[:mitigation_api_client]).to eq(0)
+    end
+  end
+
   describe "#calculate_lcom4" do
     it "returns 1 for a fully cohesive class" do
       classes = parser.parse_file("#{fixtures_path}/good_srp.rb")
