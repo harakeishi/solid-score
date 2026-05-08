@@ -30,6 +30,18 @@ RSpec.describe SolidScore::Scorer do
 
       expect(result.total).to eq(result.srp)
     end
+
+    # Issue #13: subscores are threaded into the ScoreResult
+    it "populates the SRP subscore breakdown" do
+      classes = parser.parse_file("#{fixtures_path}/good_srp.rb")
+      result = described_class.new.score(classes.first)
+
+      expect(result.subscores).to have_key(:srp)
+      expect(result.subscores[:srp]).to include(
+        :base, :wmc_penalty, :line_count_penalty,
+        :mitigation_framework_base, :mitigation_api_client
+      )
+    end
   end
 
   describe "#score_all" do

@@ -49,5 +49,31 @@ RSpec.describe SolidScore::DiffClassifier do
       expect(result[:delta_structural]).to eq(-45.0)
       expect(result[:delta_mechanical]).to eq(-30.0)
     end
+
+    # Issue #13 follow-up: edge cases.
+    it "returns zero deltas when results are identical" do
+      score = make_result(srp: 80, ocp: 70, lsp: 100, isp: 90, dip: 60)
+      result = classifier.classify(score, score)
+      expect(result).to eq(delta_total: 0.0, delta_structural: 0.0, delta_mechanical: 0.0)
+    end
+
+    it "reports positive deltas for improvements" do
+      before = make_result(srp: 50, ocp: 50, lsp: 50, isp: 50, dip: 50)
+      after = make_result(srp: 100, ocp: 100, lsp: 100, isp: 100, dip: 100)
+      result = classifier.classify(before, after)
+      expect(result[:delta_structural]).to eq(150.0)
+      expect(result[:delta_mechanical]).to eq(100.0)
+      expect(result[:delta_total]).to be > 0
+    end
+
+    it "rounds to one decimal place" do
+      before = make_result(srp: 100.0, ocp: 100.0, lsp: 100.0, isp: 100.0, dip: 100.0)
+      after = make_result(srp: 99.55, ocp: 100.0, lsp: 100.0, isp: 100.0, dip: 100.0)
+      result = classifier.classify(before, after)
+      # 99.55 - 100.0 = -0.45 -> rounds to -0.5 (Ruby Float#round(1), half-away-from-zero).
+      # The exact half-rounding direction is irrelevant; what matters is the
+      # result has at most 1 decimal place.
+      expect(result[:delta_mechanical] * 10).to eq((result[:delta_mechanical] * 10).round)
+    end
   end
 end

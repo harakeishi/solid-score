@@ -25,18 +25,19 @@ module SolidScore
 
         wmc = wmc_penalty(class_info)
         line = line_count_penalty(class_info)
-        before_mitigation = base_score - wmc - line
+        pre_mitigation = base_score - wmc - line
 
-        score = mitigate_framework_base(before_mitigation, class_info)
-        score = mitigate_api_client(score, class_info)
+        after_framework = mitigate_framework_base(pre_mitigation, class_info)
+        after_api = mitigate_api_client(after_framework, class_info)
 
         {
-          score: clamp_score(score),
+          score: clamp_score(after_api),
           breakdown: {
             base: base_score,
             wmc_penalty: wmc,
             line_count_penalty: line,
-            mitigations: score - before_mitigation
+            mitigation_framework_base: after_framework - pre_mitigation,
+            mitigation_api_client: after_api - after_framework
           }
         }
       end

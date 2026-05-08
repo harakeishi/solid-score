@@ -5,8 +5,25 @@ module SolidScore
   # components so reviewers can tell genuine OCP/DIP/LSP regressions
   # apart from mass-only SRP/ISP movements.
   #
-  # - Δstructural = OCP + LSP + DIP (changes that signal architectural decay)
-  # - Δmechanical = SRP + ISP    (changes driven mostly by code mass)
+  # - +delta_structural+ = OCP + LSP + DIP (architectural decay signals)
+  # - +delta_mechanical+ = SRP + ISP       (mass-driven movement)
+  # - +delta_total+      = +ScoreResult#total+ delta (weighted)
+  #
+  # The classification is performed at the principle-score level rather
+  # than the subscore level for now. The original IMPROVEMENT_PLAN.md
+  # discusses subscore-level classification (e.g. attributing the SRP
+  # +wmc_penalty+ to mechanical and the LCOM4 movement to structural);
+  # extending this requires breakdowns from every analyzer and is
+  # tracked as a follow-up.
+  #
+  # IMPORTANT: +delta_structural+ and +delta_mechanical+ are unweighted
+  # sums while +delta_total+ applies +ScoreResult+ weights. They are NOT
+  # required to add up to +delta_total+. Consumers that need the weighted
+  # split should multiply the unweighted contributions by the relevant
+  # weights themselves.
+  #
+  # Compare with +DiffAnalyzer+, which detects which classes/files
+  # changed between two revisions but does not interpret score deltas.
   class DiffClassifier
     STRUCTURAL_PRINCIPLES = %i[ocp lsp dip].freeze
     MECHANICAL_PRINCIPLES = %i[srp isp].freeze
