@@ -3,12 +3,13 @@
 module SolidScore
   module Analyzers
     class IspAnalyzer < BaseAnalyzer
-      PUBLIC_METHOD_SCORES = [
-        [5, 100],
-        [10, 80],
-        [15, 60],
-        [20, 40]
-      ].freeze
+      # Issue #7: Linear interpolation between 5 and 25 public methods.
+      # 5 methods → 100, 25 methods → 20, slope -4pt per method.
+      PUBLIC_METHOD_SCORE_CEILING = 100
+      PUBLIC_METHOD_SCORE_FLOOR = 20
+      PUBLIC_METHOD_FREE_COUNT = 5
+      PUBLIC_METHOD_FLOOR_COUNT = 25
+      PUBLIC_METHOD_SLOPE = 4
 
       # Phase 2a: フレームワークConcern/標準ライブラリモジュール
       # これらのincludeはペナルティを緩和する
@@ -34,11 +35,10 @@ module SolidScore
       private
 
       def public_method_score(count)
-        PUBLIC_METHOD_SCORES.each do |threshold, score|
-          return score if count <= threshold
-        end
+        return PUBLIC_METHOD_SCORE_CEILING if count <= PUBLIC_METHOD_FREE_COUNT
+        return PUBLIC_METHOD_SCORE_FLOOR if count >= PUBLIC_METHOD_FLOOR_COUNT
 
-        20
+        PUBLIC_METHOD_SCORE_CEILING - ((count - PUBLIC_METHOD_FREE_COUNT) * PUBLIC_METHOD_SLOPE)
       end
 
       # Phase 2a: フレームワークConcernを区別してペナルティを計算
