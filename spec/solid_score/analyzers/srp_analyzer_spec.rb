@@ -119,6 +119,26 @@ RSpec.describe SolidScore::Analyzers::SrpAnalyzer do
       end
     end
 
+    # Issue #9: inspection class mitigation
+    context "with inspection class" do
+      it "guarantees minimum score of 80 even when many low-cohesion methods exist" do
+        methods = (1..10).map do |i|
+          SolidScore::Models::MethodInfo.new(
+            name: :"check_#{i}", visibility: :public,
+            line_start: i * 10, line_end: i * 10 + 5,
+            instance_variables: [:"@var_#{i}"]
+          )
+        end
+        class_info = SolidScore::Models::ClassInfo.new(
+          name: "Muumuu::GoogleCloudChannel::Client::Inspect",
+          file_path: "app/inspectors/inspect.rb",
+          methods: methods
+        )
+        score = analyzer.analyze(class_info)
+        expect(score).to be >= 80
+      end
+    end
+
     # Phase 2c: 小規模クラスの補正
     context "with small class (<=3 methods)" do
       it "does not unfairly penalize small classes" do

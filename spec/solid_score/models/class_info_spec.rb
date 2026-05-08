@@ -119,6 +119,39 @@ RSpec.describe SolidScore::Models::ClassInfo do
     end
   end
 
+  # Issue #9: inspection / diagnostic class detection
+  describe "#inspection_class?" do
+    it "matches the Inspect suffix" do
+      ci = described_class.new(name: "Muumuu::GoogleCloudChannel::Client::Inspect")
+      expect(ci.inspection_class?).to be true
+    end
+
+    it "matches Console / Debug / Diagnostic / Diagnostics / Tools suffixes" do
+      %w[FooConsole BarDebug BazDiagnostic QuxDiagnostics RuntimeTools].each do |name|
+        ci = described_class.new(name: name)
+        expect(ci.inspection_class?).to be(true), "expected #{name} to be inspection"
+      end
+    end
+
+    it "matches inspection-style file paths" do
+      ci = described_class.new(name: "Helper", file_path: "app/inspectors/helper.rb")
+      expect(ci.inspection_class?).to be true
+    end
+
+    it "returns false for ordinary classes" do
+      ci = described_class.new(name: "OrderService", file_path: "app/services/order_service.rb")
+      expect(ci.inspection_class?).to be false
+    end
+
+    # Issue #9 follow-up: anchor patterns to avoid mid-word false positives.
+    it "does not match mid-word names (DiagnosticReport, LoadDebug, ...)" do
+      %w[Foo::DiagnosticReport LoadDebugger ToolsetManager InspectorOnly].each do |name|
+        ci = described_class.new(name: name)
+        expect(ci.inspection_class?).to be(false), "expected #{name} NOT to be inspection"
+      end
+    end
+  end
+
   describe "#http_client_pattern?" do
     it "returns true when all public methods share a client ivar" do
       m1 = SolidScore::Models::MethodInfo.new(
