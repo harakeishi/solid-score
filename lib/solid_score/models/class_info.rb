@@ -65,6 +65,27 @@ module SolidScore
         FRAMEWORK_DIRECT_BASES.include?(superclass)
       end
 
+      # Issue #9: Inspection / diagnostic class detection.
+      # Console-only or read-only diagnostic helpers grow naturally and should
+      # not be penalised for their public surface.
+      #
+      # Suffixes are anchored with `\z` to avoid matching mid-word names
+      # (e.g. `DiagnosticReport` should not be treated as a diagnostic
+      # helper). `Tools` and `Debug` are intentionally narrow because they
+      # appear in many domain models.
+      INSPECTION_NAME_PATTERNS = [
+        /Inspect\z/, /Console\z/, /Debug\z/,
+        /Diagnostic\z/, /Diagnostics\z/, /Tools\z/
+      ].freeze
+      INSPECTION_PATH_PATTERN = %r{/(inspectors?|diagnostics?|debug)/}
+
+      def inspection_class?
+        return true if INSPECTION_NAME_PATTERNS.any? { |p| name.match?(p) }
+        return true if file_path.match?(INSPECTION_PATH_PATTERN)
+
+        false
+      end
+
       # Phase 2c: HTTPクライアントパターンかどうか
       # 全publicメソッドが共通のクライアント系インスタンス変数を参照する構造
       def http_client_pattern?

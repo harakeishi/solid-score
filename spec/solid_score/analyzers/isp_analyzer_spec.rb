@@ -105,10 +105,25 @@ RSpec.describe SolidScore::Analyzers::IspAnalyzer do
       end
     end
 
+    # Issue #9: inspection class mitigation
+    context "with inspection class" do
+      it "guarantees minimum score of 80 regardless of public method count" do
+        methods = (1..15).map do |i|
+          SolidScore::Models::MethodInfo.new(
+            name: :"check_#{i}", visibility: :public, line_start: i, line_end: i + 1
+          )
+        end
+        class_info = SolidScore::Models::ClassInfo.new(
+          name: "Muumuu::GoogleCloudChannel::Client::Inspect",
+          methods: methods
+        )
+        score = analyzer.analyze(class_info)
+        expect(score).to be >= 80
+      end
+    end
+
     # Issue #7: linear public method scoring curve
     describe "#public_method_score (linear curve)" do
-      let(:scoring) { analyzer.send(:public_method_score, count) }
-
       context "when count <= 5" do
         it "returns the ceiling" do
           (0..5).each do |n|

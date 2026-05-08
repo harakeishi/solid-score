@@ -3,6 +3,8 @@
 module SolidScore
   module Analyzers
     class IspAnalyzer < BaseAnalyzer
+      include Mitigations
+
       # Issue #7: Linear interpolation between 5 and 25 public methods.
       # 5 methods → 100, 25 methods → 20, slope -4pt per method.
       PUBLIC_METHOD_SCORE_CEILING = 100
@@ -41,6 +43,7 @@ module SolidScore
         score = public_method_score(effective_public_method_count(class_info))
         score -= include_penalty(class_info)
         score -= cohesion_penalty(class_info)
+        score = mitigate_inspection(score, class_info)
 
         clamp_score(score)
       end

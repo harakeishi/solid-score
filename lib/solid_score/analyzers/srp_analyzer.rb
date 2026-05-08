@@ -3,6 +3,8 @@
 module SolidScore
   module Analyzers
     class SrpAnalyzer < BaseAnalyzer
+      include Mitigations
+
       LCOM4_SCORES = {
         1 => 100,
         2 => 60,
@@ -27,6 +29,9 @@ module SolidScore
 
         # Phase 2c: APIクライアントパターンの最低スコア保証
         score = mitigate_api_client(score, class_info)
+
+        # Issue #9: Inspection / diagnostic class minimum score
+        score = mitigate_inspection(score, class_info)
 
         clamp_score(score)
       end
