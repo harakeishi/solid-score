@@ -208,11 +208,13 @@ module SolidScore
         method_calls = []
         calls_super = false
         case_when_count = 0
+        memoized_factory = false
 
         if body
           collect_method_details(body, instance_vars, called_methods, raises, method_calls)
           calls_super = contains_super?(body)
           case_when_count = count_case_when_branches(body)
+          memoized_factory = detect_memoized_factory(body)
         end
 
         parameters = extract_parameters(args)
@@ -231,8 +233,30 @@ module SolidScore
           calls_super: calls_super,
           method_calls: method_calls,
           case_when_count: case_when_count,
-          kind: kind
+          kind: kind,
+          memoized_factory: memoized_factory
         )
+      end
+
+      # Issue #12: Detects the `@ivar ||= ConstantClass.new(...)` memoised
+      # factory pattern, which is the canonical Rails dependency-injection
+      # idiom for controllers / services.
+      def detect_memoized_factory(node)
+        return false unless node.is_a?(::AST::Node)
+        return true if memoized_factory_node?(node)
+
+        node.children.any? { |c| detect_memoized_factory(c) }
+      end
+
+      def memoized_factory_node?(node)
+        return false unless node.type == :or_asgn
+
+        lhs, rhs = node.children
+        return false unless lhs.is_a?(::AST::Node) && lhs.type == :ivasgn
+        return false unless rhs.is_a?(::AST::Node) && rhs.type == :send
+
+        receiver, method_name = rhs.children[0], rhs.children[1]
+        receiver.is_a?(::AST::Node) && receiver.type == :const && method_name == :new
       end
 
       def extract_method_parts(node, kind)

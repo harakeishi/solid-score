@@ -72,6 +72,30 @@ RSpec.describe SolidScore::Parser::RubyParser do
       expect(calculate_method.called_methods).to include(:tax_amount)
     end
 
+    # Issue #12: memoized factory detection
+    context "memoized factory detection" do
+      it "flags `@service ||= ServiceClass.new(...)` methods" do
+        parser = described_class.new
+        classes = parser.parse_file("#{fixtures_path}/memoized_factory.rb")
+        controller = classes.first
+
+        provisioning = controller.methods.find { |m| m.name == :provisioning_service }
+        repository = controller.methods.find { |m| m.name == :customer_repository }
+
+        expect(provisioning.memoized_factory?).to be true
+        expect(repository.memoized_factory?).to be true
+      end
+
+      it "does not flag regular methods" do
+        parser = described_class.new
+        classes = parser.parse_file("#{fixtures_path}/memoized_factory.rb")
+        controller = classes.first
+
+        create = controller.methods.find { |m| m.name == :create }
+        expect(create.memoized_factory?).to be false
+      end
+    end
+
     # Phase 1 改善: case/when 分岐カウントのテスト
     context "case/when branch counting" do
       it "counts case/when branches in methods" do

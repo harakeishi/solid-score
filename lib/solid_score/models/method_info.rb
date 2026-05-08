@@ -31,7 +31,8 @@ module SolidScore
       def initialize(name:, visibility: :public, line_start: 0, line_end: 0,
                      instance_variables: [], called_methods: [], parameters: [],
                      cyclomatic_complexity: 1, raises: [], calls_super: false,
-                     method_calls: [], case_when_count: 0, kind: :instance)
+                     method_calls: [], case_when_count: 0, kind: :instance,
+                     memoized_factory: false)
         @name = name
         @visibility = visibility
         @line_start = line_start
@@ -45,10 +46,15 @@ module SolidScore
         @method_calls = method_calls
         @case_when_count = case_when_count
         @kind = kind
+        @memoized_factory = memoized_factory
       end
 
       def public?
         visibility == :public
+      end
+
+      def memoized_factory?
+        @memoized_factory
       end
 
       def class_method?

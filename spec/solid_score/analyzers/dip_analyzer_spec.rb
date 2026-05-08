@@ -150,6 +150,48 @@ RSpec.describe SolidScore::Analyzers::DipAnalyzer do
       end
     end
 
+    # Issue #12: memoized factory bonus
+    context "with memoized factory pattern" do
+      it "rewards @service ||= ServiceClass.new patterns" do
+        classes = parser.parse_file("#{fixtures_path}/memoized_factory.rb")
+        controller = classes.first
+
+        # Controller has 2 memoized factories with cyclomatic_complexity 1
+        # → 2 * 5pt = 10pt bonus
+        # Without bonus the controller would be penalised for the
+        # ProvisioningService.new / CustomerRepository.new concrete deps.
+        bonus = analyzer.send(:memoized_factory_bonus, controller)
+        expect(bonus).to eq(10)
+      end
+
+      it "caps the bonus at 15pt" do
+        methods = (1..5).map do |i|
+          SolidScore::Models::MethodInfo.new(
+            name: :"service_#{i}", visibility: :private,
+            cyclomatic_complexity: 1, memoized_factory: true
+          )
+        end
+        class_info = SolidScore::Models::ClassInfo.new(name: "Demo", methods: methods)
+        expect(analyzer.send(:memoized_factory_bonus, class_info)).to eq(15)
+      end
+
+      it "ignores non-memoized methods" do
+        method = SolidScore::Models::MethodInfo.new(
+          name: :ordinary, cyclomatic_complexity: 1, memoized_factory: false
+        )
+        class_info = SolidScore::Models::ClassInfo.new(name: "Demo", methods: [method])
+        expect(analyzer.send(:memoized_factory_bonus, class_info)).to eq(0)
+      end
+
+      it "ignores memoized methods with cyclomatic complexity > 1" do
+        method = SolidScore::Models::MethodInfo.new(
+          name: :complex, cyclomatic_complexity: 3, memoized_factory: true
+        )
+        class_info = SolidScore::Models::ClassInfo.new(name: "Demo", methods: [method])
+        expect(analyzer.send(:memoized_factory_bonus, class_info)).to eq(0)
+      end
+    end
+
     # Phase 2c: レイヤー別ペナルティ
     context "with layer-specific evaluation" do
       it "applies reduced penalty for controller layer" do
