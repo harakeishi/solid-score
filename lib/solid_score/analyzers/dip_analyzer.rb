@@ -123,9 +123,15 @@ module SolidScore
         init.parameters.count { |type, _| %i[key keyreq kwarg kwoptarg kwrestarg].include?(type) }
       end
 
+      # Issue #12: Reward `@svc ||= ServiceClass.new(...)` style memoised
+      # factories, but skip standard-library / user-whitelisted classes so
+      # `@queue ||= Queue.new` doesn't earn a DI-style bonus.
       def memoized_factory_bonus(class_info)
         count = class_info.methods.count do |m|
-          m.memoized_factory? && m.cyclomatic_complexity == 1
+          next false unless m.memoized_factory? && m.cyclomatic_complexity == 1
+          next false if m.memoized_factory_receiver.nil?
+
+          !whitelisted_class?(m.memoized_factory_receiver)
         end
         [count * MEMOIZED_FACTORY_BONUS_PER, MEMOIZED_FACTORY_BONUS_MAX].min
       end
