@@ -97,6 +97,18 @@ RSpec.describe SolidScore::Analyzers::SrpAnalyzer do
     end
   end
 
+  # Issue #13: breakdown for diff classification
+  describe "#analyze_with_breakdown" do
+    it "returns the score plus a breakdown hash" do
+      classes = parser.parse_file("#{fixtures_path}/good_srp.rb")
+      result = analyzer.analyze_with_breakdown(classes.first)
+
+      expect(result[:score]).to eq(analyzer.analyze(classes.first))
+      expect(result[:breakdown]).to be_a(Hash)
+      expect(result[:breakdown]).to include(:base, :wmc_penalty)
+    end
+  end
+
   describe "#calculate_lcom4" do
     it "returns 1 for a fully cohesive class" do
       classes = parser.parse_file("#{fixtures_path}/good_srp.rb")

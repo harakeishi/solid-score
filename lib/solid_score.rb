@@ -19,6 +19,7 @@ require_relative "solid_score/formatters/text_formatter"
 require_relative "solid_score/formatters/json_formatter"
 require_relative "solid_score/formatters/html_formatter"
 require_relative "solid_score/diff_analyzer"
+require_relative "solid_score/diff_classifier"
 require_relative "solid_score/runner"
 require_relative "solid_score/cli"
 

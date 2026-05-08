@@ -10,25 +10,35 @@ module SolidScore
       }.freeze
 
       def analyze(class_info)
+        analyze_with_breakdown(class_info)[:score]
+      end
+
+      # Issue #13: Returns the score together with a per-step breakdown so
+      # diff-mode output can split structural changes from mechanical ones.
+      def analyze_with_breakdown(class_info)
         methods = analyzable_methods(class_info)
-        return 100 if methods.empty?
+        return { score: 100, breakdown: { base: 100 } } if methods.empty?
 
         lcom4 = calculate_lcom4(class_info)
         base_score = lcom4_to_score(lcom4)
-
         base_score = mitigate_data_class(base_score, class_info) if class_info.data_class?
 
-        score = base_score
-        score -= wmc_penalty(class_info)
-        score -= line_count_penalty(class_info)
+        wmc = wmc_penalty(class_info)
+        line = line_count_penalty(class_info)
+        before_mitigation = base_score - wmc - line
 
-        # Phase 2c: フレームワーク基盤クラスの最低スコア保証
-        score = mitigate_framework_base(score, class_info)
-
-        # Phase 2c: APIクライアントパターンの最低スコア保証
+        score = mitigate_framework_base(before_mitigation, class_info)
         score = mitigate_api_client(score, class_info)
 
-        clamp_score(score)
+        {
+          score: clamp_score(score),
+          breakdown: {
+            base: base_score,
+            wmc_penalty: wmc,
+            line_count_penalty: line,
+            mitigations: score - before_mitigation
+          }
+        }
       end
 
       # LCOM4（Lack of Cohesion of Methods）を計算する。
