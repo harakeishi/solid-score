@@ -63,18 +63,29 @@ module SolidScore
         end
       end
 
-      # Phase 1 改善: case/when 分岐へのペナルティ
+      # Issue #11: 2-way and 3-way case/when leniency.
+      # 1 when-clause   → 2pt   (2-way branch, often a minor domain conditional)
+      # 2 when-clauses  → 5pt   (3-way branch, still acceptable)
+      # 3+ when-clauses → n * 5pt (linear, real OCP smell)
       #
-      # case/when分岐はOCP違反の強い兆候です。
-      # 新しい型やケースを追加するたびにコードの修正が必要になるため、
-      # ポリモーフィズムへのリファクタリングを推奨します。
-      #
-      # @param class_info [ClassInfo] クラス情報
-      # @return [Integer] ペナルティポイント
+      # Note on the per-method shape: in earlier versions the score was driven
+      # by a class-wide pool of `when` clauses. With the per-method curve, a
+      # class containing many small 2-way conditionals will now score better
+      # than before, but the class-level cap (MAX_CASE_WHEN_PENALTY) still
+      # caps the contribution. This trade-off is intentional — wide n-way
+      # switches are still penalised heavily.
       def case_when_penalty(class_info)
-        total_case_when_branches = class_info.methods.sum(&:case_when_count)
+        raw = class_info.methods.sum { |m| case_when_penalty_for_count(m.case_when_count) }
+        [raw, MAX_CASE_WHEN_PENALTY].min
+      end
 
-        [total_case_when_branches * CASE_WHEN_PENALTY_PER_BRANCH, MAX_CASE_WHEN_PENALTY].min
+      def case_when_penalty_for_count(when_count)
+        case when_count
+        when 0 then 0
+        when 1 then 2
+        when 2 then 5
+        else when_count * CASE_WHEN_PENALTY_PER_BRANCH
+        end
       end
 
       def extension_point_bonus(class_info)

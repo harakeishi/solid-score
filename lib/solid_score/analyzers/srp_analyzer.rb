@@ -3,6 +3,8 @@
 module SolidScore
   module Analyzers
     class SrpAnalyzer < BaseAnalyzer
+      include Mitigations
+
       LCOM4_SCORES = {
         1 => 100,
         2 => 60,
@@ -10,25 +12,38 @@ module SolidScore
       }.freeze
 
       def analyze(class_info)
+        analyze_with_breakdown(class_info)[:score]
+      end
+
+      # Issue #13: Returns the score together with a per-step breakdown so
+      # diff-mode output can split structural changes from mechanical ones.
+      def analyze_with_breakdown(class_info)
         methods = analyzable_methods(class_info)
-        return 100 if methods.empty?
+        return { score: 100, breakdown: { base: 100 } } if methods.empty?
 
         lcom4 = calculate_lcom4(class_info)
         base_score = lcom4_to_score(lcom4)
-
         base_score = mitigate_data_class(base_score, class_info) if class_info.data_class?
 
-        score = base_score
-        score -= wmc_penalty(class_info)
-        score -= line_count_penalty(class_info)
+        wmc = wmc_penalty(class_info)
+        statement_penalty = effective_statement_penalty(class_info)
+        pre_mitigation = base_score - wmc - statement_penalty
 
-        # Phase 2c: フレームワーク基盤クラスの最低スコア保証
-        score = mitigate_framework_base(score, class_info)
+        after_framework = mitigate_framework_base(pre_mitigation, class_info)
+        after_api = mitigate_api_client(after_framework, class_info)
+        after_inspection = mitigate_inspection(after_api, class_info)
 
-        # Phase 2c: APIクライアントパターンの最低スコア保証
-        score = mitigate_api_client(score, class_info)
-
-        clamp_score(score)
+        {
+          score: clamp_score(after_inspection),
+          breakdown: {
+            base: base_score,
+            wmc_penalty: wmc,
+            effective_statement_penalty: statement_penalty,
+            mitigation_framework_base: after_framework - pre_mitigation,
+            mitigation_api_client: after_api - after_framework,
+            mitigation_inspection: after_inspection - after_api
+          }
+        }
       end
 
       # LCOM4（Lack of Cohesion of Methods）を計算する。
@@ -139,12 +154,19 @@ module SolidScore
         end
       end
 
-      def line_count_penalty(class_info)
-        lines = class_info.line_count
+      # Issue #10: Penalise based on effective statement count from the AST.
+      # Replaces the old line-count heuristic so that stylistic refactors
+      # (e.g. expanding `raise X, msg` into `if cond; raise X.new(msg); end`)
+      # do not change the SRP score when the semantics are unchanged.
+      EFFECTIVE_STATEMENT_HIGH_THRESHOLD = 200
+      EFFECTIVE_STATEMENT_LOW_THRESHOLD = 100
 
-        if lines > 400
+      def effective_statement_penalty(class_info)
+        total = class_info.methods.sum(&:effective_statement_count)
+
+        if total > EFFECTIVE_STATEMENT_HIGH_THRESHOLD
           20
-        elsif lines > 200
+        elsif total > EFFECTIVE_STATEMENT_LOW_THRESHOLD
           10
         else
           0

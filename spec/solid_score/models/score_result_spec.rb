@@ -40,6 +40,20 @@ RSpec.describe SolidScore::Models::ScoreResult do
     end
   end
 
+  # Issue #13: per-principle breakdown
+  describe "#subscores" do
+    it "defaults to an empty hash" do
+      result = described_class.new(class_name: "Foo")
+      expect(result.subscores).to eq({})
+    end
+
+    it "stores the provided breakdown" do
+      breakdown = { srp: { base: 100, wmc_penalty: 10, effective_statement_penalty: 0 } }
+      result = described_class.new(class_name: "Foo", subscores: breakdown)
+      expect(result.subscores).to eq(breakdown)
+    end
+  end
+
   describe "#confidence" do
     it "returns base confidence levels without class_info" do
       result = described_class.new(class_name: "Foo")
