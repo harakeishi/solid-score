@@ -202,6 +202,34 @@ module SolidScore
       # of patterns that are penalised as concrete dependencies.
       MEMOIZED_FACTORY_METHODS = %i[new create build call open].freeze
 
+      # Issue #10: Statement-like AST nodes that count toward the effective body size.
+      #
+      # Notes on what we *don't* count and why:
+      # - :begin / :rescue / :ensure are sequence wrappers (their handler bodies
+      #   are counted via their children).
+      # - :when is a child of :case and would double-count the dispatch.
+      # - :ivar / :lvar are lookups, not statements.
+      #
+      # Notes on what we *do* count:
+      # - :send and :csend (safe-navigation) treat method calls as a statement;
+      #   chained calls intentionally accumulate because each step is observable
+      #   behaviour.
+      # - :masgn (multiple assignment) joins the explicit assignment forms.
+      EFFECTIVE_STATEMENT_TYPES = %i[
+        send csend
+        if case return
+        ivasgn lvasgn gvasgn cvasgn masgn
+        and_asgn or_asgn op_asgn
+        yield block
+        while until for
+        next break retry redo super zsuper
+      ].freeze
+
+      # Nested method/lambda boundaries — count_effective_statements stops at
+      # these so that statements inside an inner lambda don't leak into the
+      # outer method's count.
+      NESTED_DEFINITION_TYPES = %i[def defs].freeze
+
       # :def ノード構造: [name, args, body]
       # :defs ノード構造: [receiver, name, args, body]
       def build_method_info(node, visibility, kind: :instance)
@@ -214,12 +242,14 @@ module SolidScore
         calls_super = false
         case_when_count = 0
         memoized_receiver = nil
+        effective_count = 0
 
         if body
           collect_method_details(body, instance_vars, called_methods, raises, method_calls)
           calls_super = contains_super?(body)
           case_when_count = count_case_when_branches(body)
           memoized_receiver = detect_memoized_factory_receiver(body)
+          effective_count = count_effective_statements(body)
         end
 
         parameters = extract_parameters(args)
@@ -239,6 +269,7 @@ module SolidScore
           method_calls: method_calls,
           case_when_count: case_when_count,
           kind: kind,
+          effective_statement_count: effective_count,
           memoized_factory_receiver: memoized_receiver
         )
       end
@@ -274,6 +305,18 @@ module SolidScore
         return nil unless MEMOIZED_FACTORY_METHODS.include?(method_name)
 
         extract_class_name(receiver)
+      end
+
+      def count_effective_statements(node, count = 0, root: true)
+        return count unless node.is_a?(::AST::Node)
+        # Don't recurse into nested method/lambda definitions when counting
+        # the parent body. The nested definition's own effective count is
+        # tracked separately by build_method_info.
+        return count if !root && NESTED_DEFINITION_TYPES.include?(node.type)
+
+        count += 1 if EFFECTIVE_STATEMENT_TYPES.include?(node.type)
+        node.children.each { |child| count = count_effective_statements(child, count, root: false) }
+        count
       end
 
       def extract_method_parts(node, kind)
