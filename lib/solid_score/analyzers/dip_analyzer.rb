@@ -9,6 +9,20 @@ module SolidScore
     class DipAnalyzer < BaseAnalyzer
       DI_BONUS = 15
 
+      # 具象依存1件あたりのペナルティと、その上限。
+      #
+      # 旧実装は concrete / (concrete + injected) の「比率」でスコアを決めて
+      # いたため、注入依存が0件のクラスは比率が必ず 1.0 になり、具象依存が
+      # 1件でも10件でも一律0点に潰れていた（著名OSSの13%が0点・中間スコア
+      # ほぼ消滅という二極化が実測された）。
+      #
+      # DIPで本来効くのは「いくつの具象クラスに直接結合しているか」という
+      # 絶対数なので、依存件数に比例した逓減ペナルティへ変更する。
+      # 1件=12pt … 5件以上で上限60ptに到達し、件数が増えるほど低スコアに
+      # なるが、1〜2件程度の素朴な `Foo.new` は中〜高スコアに留まる。
+      CONCRETE_DEP_PENALTY_PER = 12
+      MAX_CONCRETE_DEP_PENALTY = 60
+
       # Issue #12: memoized factory bonus
       MEMOIZED_FACTORY_BONUS_PER = 5
       MEMOIZED_FACTORY_BONUS_MAX = 15
@@ -40,6 +54,12 @@ module SolidScore
         @user_whitelist = user_whitelist
       end
 
+      # 具象依存が1件でも残るクラスは、DIボーナス等を加点しても満点には
+      # 到達させない上限。100点は「具象依存ゼロの真にクリーンなクラス」に
+      # 限定し、DI採用は加点しつつも「具象結合が残る＝DIPは完璧ではない」
+      # を表現する（具象1件 + 注入1件のような構成が100点に潰れるのを防ぐ）。
+      MAX_SCORE_WITH_CONCRETE_DEP = 95
+
       # Phase 2c: レイヤー別のDIPペナルティ重み
       # Controller/Model ではDIP違反の影響度を軽減
       # (Railsの標準パターンである Service.new.call, OtherModel.create を許容)
@@ -63,15 +83,18 @@ module SolidScore
           return clamp_score(100 + bonus)
         end
 
-        concrete_ratio = concrete_deps.to_f / total_deps
-
         # Phase 2c: レイヤー別にペナルティの重みを調整
         weight = layer_weight(class_info)
-        score = 100 - (concrete_ratio * 100 * weight)
+
+        # 具象依存の「絶対数」に応じた逓減ペナルティ（比率ベースを廃止）。
+        # これにより具象1件のクラスが0点に潰れず、多依存クラスとの差が出る。
+        score = 100 - (concrete_dep_penalty(concrete_deps) * weight)
 
         score += DI_BONUS if injected_deps.positive?
-        score -= ce_penalty(class_info, weight)
         score += bonus
+
+        # 具象依存が残る限り、加点しても満点には届かせない。
+        score = [score, MAX_SCORE_WITH_CONCRETE_DEP].min if concrete_deps.positive?
 
         clamp_score(score)
       end
@@ -136,22 +159,14 @@ module SolidScore
         [count * MEMOIZED_FACTORY_BONUS_PER, MEMOIZED_FACTORY_BONUS_MAX].min
       end
 
-      def layer_weight(class_info)
-        LAYER_DIP_WEIGHT.fetch(class_info.layer, 1.0)
+      # 具象依存の件数に比例した逓減ペナルティ（上限あり）。
+      # 0件=0, 1件=12, 2件=24 ... 5件以上は60で頭打ち。
+      def concrete_dep_penalty(concrete_deps)
+        [concrete_deps * CONCRETE_DEP_PENALTY_PER, MAX_CONCRETE_DEP_PENALTY].min
       end
 
-      def ce_penalty(class_info, weight = 1.0)
-        ce = count_concrete_instantiations(class_info)
-
-        raw = if ce > 20
-                20
-              elsif ce > 10
-                10
-              else
-                0
-              end
-
-        (raw * weight).round
+      def layer_weight(class_info)
+        LAYER_DIP_WEIGHT.fetch(class_info.layer, 1.0)
       end
     end
   end
