@@ -39,6 +39,53 @@ RSpec.describe SolidScore::Analyzers::DipAnalyzer do
       end
     end
 
+    # 絶対数ベースの逓減スコアリング（比率ベース廃止）の境界値を eq で固定する。
+    # 緩い区間ではなく具体値を固定することで、CONCRETE_DEP_PENALTY_PER /
+    # MAX_CONCRETE_DEP_PENALTY / MAX_SCORE_WITH_CONCRETE_DEP の変更を回帰
+    # として検出できるようにする。
+    context "concrete-dependency penalty curve (regression guard)" do
+      def class_with_concrete_deps(count, injected: 0)
+        calls = (1..count).map do |i|
+          SolidScore::Models::MethodCallInfo.new(
+            method_name: :new, receiver: "Service#{i}", receiver_type: :const
+          )
+        end
+        methods = [SolidScore::Models::MethodInfo.new(name: :run, method_calls: calls)]
+        if injected.positive?
+          params = (1..injected).map { |i| [:kwarg, :"dep#{i}"] }
+          methods.unshift(
+            SolidScore::Models::MethodInfo.new(name: :initialize, parameters: params)
+          )
+        end
+        SolidScore::Models::ClassInfo.new(name: "Demo", methods: methods)
+      end
+
+      it "scores 1 concrete dependency at 88" do
+        expect(analyzer.analyze(class_with_concrete_deps(1))).to eq(88)
+      end
+
+      it "scores 2 concrete dependencies at 76" do
+        expect(analyzer.analyze(class_with_concrete_deps(2))).to eq(76)
+      end
+
+      it "scores 3 concrete dependencies at 64" do
+        expect(analyzer.analyze(class_with_concrete_deps(3))).to eq(64)
+      end
+
+      it "caps the penalty so 5 dependencies score 40" do
+        expect(analyzer.analyze(class_with_concrete_deps(5))).to eq(40)
+      end
+
+      it "keeps the floor flat once the penalty is capped (6 deps also 40)" do
+        expect(analyzer.analyze(class_with_concrete_deps(6))).to eq(40)
+      end
+
+      # 最重要: 具象依存が残るクラスは DI ボーナスを加点しても満点に届かない。
+      it "caps the score at 95 when a concrete dep remains despite injection" do
+        expect(analyzer.analyze(class_with_concrete_deps(1, injected: 1))).to eq(95)
+      end
+    end
+
     # Phase 1 改善: 標準ライブラリホワイトリストのテスト
     context "with standard library classes" do
       it "does not penalize standard library instantiations" do
@@ -65,13 +112,12 @@ RSpec.describe SolidScore::Analyzers::DipAnalyzer do
         score = analyzer.analyze(mixed_processor)
 
         # MixedProcessor has:
-        # - 1 injected dependency (service:)
-        # - Hash.new, Time.new are standard library (not counted)
-        # - ProcessingHelper.new is custom (counted as 1)
-        # concrete_deps = 1, injected_deps = 1, total = 2
-        # concrete_ratio = 0.5, base_score = 50 + DI_BONUS(15) = 65
-        expect(score).to be > 50
-        expect(score).to be < 100
+        # - 1 injected dependency (service:)        → DI_BONUS(15)
+        # - Hash.new, Time.new are standard library → not counted
+        # - ProcessingHelper.new is custom          → 1 concrete dep (-12)
+        # 100 - 12 + 15 = 103 だが、具象依存が残るため MAX_SCORE_WITH_CONCRETE_DEP(95)
+        # でキャップされる。DI を使っても具象結合が残る限り満点にはしない。
+        expect(score).to eq(95)
       end
     end
 

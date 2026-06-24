@@ -37,136 +37,62 @@ RSpec.describe SolidScore::Analyzers::LspAnalyzer do
       end
     end
 
-    # Phase 1 改善: simple_implementation? テスト
-    context "with simple implementation (no super)" do
-      it "does not penalize simple overrides (3 lines or less, no branching)" do
+    # super を呼ばないオーバーライド／新規追加メソッドはそれ自体では LSP 違反
+    # ではないため減点しない。superclass の種類（フレームワーク基底・Base*・
+    # 任意の親）やメソッドの複雑さに関わらず、契約破りの raise が無い限り 100 点
+    # になることを示す。これは「no_super を判定軸から外した」という設計判断の
+    # 回帰ガードであり、ここが 100 でなくなったらロジックが逆戻りしている。
+    context "with overrides that skip super (no contract-breaking raise)" do
+      def child_class(superclass:, raises: [])
+        SolidScore::Models::ClassInfo.new(
+          name: "Child",
+          superclass: superclass,
+          methods: [
+            SolidScore::Models::MethodInfo.new(
+              name: :work,
+              visibility: :public,
+              line_start: 1,
+              line_end: 8, # 単純実装かどうかに依らず減点しないことを示すため複数行
+              cyclomatic_complexity: 3, # 分岐があっても減点しない
+              calls_super: false,
+              raises: raises
+            )
+          ]
+        )
+      end
+
+      it "does not penalize a Rails framework base subclass" do
+        expect(analyzer.analyze(child_class(superclass: "ApplicationRecord"))).to eq(100)
+      end
+
+      it "does not penalize a Base*-named parent subclass" do
+        expect(analyzer.analyze(child_class(superclass: "BaseProcessor"))).to eq(100)
+      end
+
+      it "does not penalize an arbitrary parent subclass" do
+        expect(analyzer.analyze(child_class(superclass: "SomeRandomParent"))).to eq(100)
+      end
+
+      it "still penalizes a contract-breaking raise regardless of parent type" do
+        score = analyzer.analyze(child_class(superclass: "ApplicationRecord", raises: ["ArgumentError"]))
+        expect(score).to eq(85)
+      end
+    end
+
+    # 同じ性質をパーサ経由のフィクスチャでも確認する。ComplexProcessor は
+    # ArgumentError を raise するため extra_raise(15) のみが効いて 85 点になる。
+    context "with parsed fixtures" do
+      it "leaves a simple override at 100" do
         classes = parser.parse_file("#{fixtures_path}/lsp_simple_override.rb")
         simple_processor = classes.find { |c| c.name == "SimpleProcessor" }
-        score = analyzer.analyze(simple_processor)
-
-        # Simple implementation should not be penalized
-        expect(score).to eq(100)
+        expect(analyzer.analyze(simple_processor)).to eq(100)
       end
 
-      it "does not penalize simple implementations with abstract parent pattern" do
-        classes = parser.parse_file("#{fixtures_path}/lsp_simple_override.rb")
-        json_handler = classes.find { |c| c.name == "JsonHandler" }
-        score = analyzer.analyze(json_handler)
-
-        # Parent is BaseHandler (contains "Base"), so no penalty
-        expect(score).to eq(100)
-      end
-    end
-
-    # Phase 1 改善: abstract_parent_pattern? テスト
-    context "with abstract parent pattern" do
-      it "recognizes Base* parent class names as abstract" do
-        class_info = SolidScore::Models::ClassInfo.new(
-          name: "ConcreteProcessor",
-          superclass: "BaseProcessor",
-          methods: [
-            SolidScore::Models::MethodInfo.new(
-              name: :process,
-              visibility: :public,
-              line_start: 1,
-              line_end: 5,
-              cyclomatic_complexity: 2,
-              calls_super: false
-            )
-          ]
-        )
-        score = analyzer.analyze(class_info)
-
-        # Abstract parent pattern, no penalty
-        expect(score).to eq(100)
-      end
-
-      it "recognizes Abstract* parent class names as abstract" do
-        class_info = SolidScore::Models::ClassInfo.new(
-          name: "ConcreteHandler",
-          superclass: "AbstractHandler",
-          methods: [
-            SolidScore::Models::MethodInfo.new(
-              name: :handle,
-              visibility: :public,
-              line_start: 1,
-              line_end: 5,
-              cyclomatic_complexity: 2,
-              calls_super: false
-            )
-          ]
-        )
-        score = analyzer.analyze(class_info)
-
-        # Abstract parent pattern, no penalty
-        expect(score).to eq(100)
-      end
-    end
-
-    # Phase 2a: フレームワーク基底クラスの認識
-    context "with Rails framework base class" do
-      it "does not penalize ApplicationRecord subclass for missing super" do
-        class_info = SolidScore::Models::ClassInfo.new(
-          name: "Order",
-          superclass: "ApplicationRecord",
-          methods: [
-            SolidScore::Models::MethodInfo.new(
-              name: :complete!,
-              visibility: :public,
-              line_start: 1,
-              line_end: 5,
-              cyclomatic_complexity: 1,
-              calls_super: false
-            ),
-            SolidScore::Models::MethodInfo.new(
-              name: :cancel!,
-              visibility: :public,
-              line_start: 7,
-              line_end: 11,
-              cyclomatic_complexity: 1,
-              calls_super: false
-            )
-          ]
-        )
-        score = analyzer.analyze(class_info)
-
-        expect(score).to eq(100)
-      end
-
-      it "does not penalize ActionController::Base subclass" do
-        class_info = SolidScore::Models::ClassInfo.new(
-          name: "UsersController",
-          superclass: "ApplicationController",
-          methods: [
-            SolidScore::Models::MethodInfo.new(
-              name: :index,
-              visibility: :public,
-              line_start: 1,
-              line_end: 5,
-              cyclomatic_complexity: 2,
-              calls_super: false
-            )
-          ]
-        )
-        score = analyzer.analyze(class_info)
-
-        expect(score).to eq(100)
-      end
-    end
-
-    # Phase 1 改善: 複雑な実装への減点テスト
-    context "with complex implementation without super" do
-      it "applies reduced penalty for complex overrides" do
+      it "penalizes only the contract-breaking raise in a complex override" do
         classes = parser.parse_file("#{fixtures_path}/lsp_simple_override.rb")
         complex_processor = classes.find { |c| c.name == "ComplexProcessor" }
-        score = analyzer.analyze(complex_processor)
-
-        # ComplexProcessor has:
-        # - Parent "BaseProcessor" (abstract_parent_pattern = true, so no super penalty)
-        # - process method raises ArgumentError (extra_raise_penalty = 15)
-        # - transform method is simple (no penalty)
-        # Expected: 100 - 15 = 85
-        expect(score).to eq(85)
+        # process が ArgumentError を raise → extra_raise_penalty(15) のみ。
+        expect(analyzer.analyze(complex_processor)).to eq(85)
       end
     end
 
