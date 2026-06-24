@@ -4,29 +4,28 @@ module SolidScore
   module Analyzers
     # Analyzes Liskov Substitution Principle compliance.
     #
-    # Phase 1 改善:
-    # - simple_implementation? による単純実装の検出（ペナルティ免除）
-    # - abstract_parent_pattern? による抽象親パターンの検出（ペナルティ免除）
-    # - それ以外のケースではペナルティを半減（10点→5点）
+    # LSP違反の静的に検出可能な真のシグナルは「サブクラスが親の契約を破る
+    # 例外を投げる（NotImplementedError 以外の raise）」こと。
+    #
+    # 旧実装は「super を呼ばないメソッドごとに減点（no_super_penalty）」も
+    # していたが、静的解析では「親をオーバーライドしたメソッド」と「子で
+    # 新規追加しただけのメソッド」を区別できないため、Visitor/Adapter
+    # パターンの完全オーバーライドや、単に独自メソッドを多く持つだけの
+    # 継承クラスまで一律に減点していた（実測: LSP<100 の継承クラスの84%が
+    # この誤検出由来）。super を呼ばないこと自体は LSP 違反ではないため、
+    # このペナルティは廃止した。
+    #
+    # 既知の限界:
+    # 現在の判定軸は extra_raise（契約破りの例外）1軸のみで、契約破りの
+    # raise を含まない継承クラスは一律 100 点になる。これは「誤検出ゼロを
+    # 優先した意図的な縮退」であり、LSP の重み(0.10)が低いことと併せて
+    # 許容している。AST だけでは「親メソッドの存在」「事前/事後条件」
+    # 「戻り値の共変/反変」を確認できないため、これらの検出軸を追加するには
+    # クロスファイル/実行時の型情報が必要になる。将来の拡張候補（共変戻り値・
+    # 事前条件強化・シグネチャ変更の検出など）は Issue #24 を参照。
     class LspAnalyzer < BaseAnalyzer
       SIGNATURE_CHANGE_PENALTY = 20
       EXTRA_RAISE_PENALTY = 15
-      NO_SUPER_PENALTY = 10
-      NO_SUPER_PENALTY_REDUCED = 5
-
-      # Maximum lines for a method to be considered "simple"
-      SIMPLE_IMPLEMENTATION_MAX_LINES = 3
-
-      # Phase 2a: フレームワーク基底クラスのリスト
-      # これらを継承するクラスではsuperなしペナルティを免除
-      FRAMEWORK_BASE_CLASSES = %w[
-        ApplicationRecord ActiveRecord::Base
-        ApplicationController ActionController::Base ActionController::API
-        ApplicationJob ActiveJob::Base
-        ApplicationMailer ActionMailer::Base
-        ApplicationCable::Channel ActionCable::Channel::Base
-        ApplicationCable::Connection ActionCable::Connection::Base
-      ].freeze
 
       def analyze(class_info)
         return 100 unless class_info.has_superclass?
@@ -37,7 +36,6 @@ module SolidScore
           next if method.name == :initialize
 
           score -= extra_raise_penalty(method)
-          score -= no_super_penalty(method, class_info)
         end
 
         clamp_score(score)
@@ -50,84 +48,6 @@ module SolidScore
         extra_raises = method.raises.reject { |r| standard_raises.include?(r) }
 
         extra_raises.any? ? EXTRA_RAISE_PENALTY : 0
-      end
-
-      # Calculates penalty for methods that don't call super.
-      #
-      # Phase 1 改善: 以下の条件でペナルティを緩和
-      # 1. 単純な実装（cyclomatic_complexity == 1 かつ 行数 <= 3）→ ペナルティなし
-      # 2. 抽象親パターン（親クラスがNotImplementedErrorをraiseする）→ ペナルティなし
-      # 3. それ以外 → ペナルティ半減（5点）
-      #
-      # @param method [MethodInfo] 評価対象のメソッド
-      # @param class_info [ClassInfo] クラス情報（親クラス判定用）
-      # @return [Integer] ペナルティポイント
-      def no_super_penalty(method, class_info)
-        return 0 if method.calls_super
-
-        # Case 1: Simple implementation (likely a complete override or hook)
-        return 0 if simple_implementation?(method)
-
-        # Case 2: Abstract parent pattern (Template Method, etc.)
-        return 0 if abstract_parent_pattern?(class_info)
-
-        # Case 3: Reduce penalty for other cases
-        NO_SUPER_PENALTY_REDUCED
-      end
-
-      # Checks if the method is a simple implementation.
-      #
-      # A simple implementation is defined as:
-      # - cyclomatic_complexity == 1 (no branching)
-      # - method body is 3 lines or less
-      #
-      # This pattern often indicates:
-      # - Complete override of parent behavior
-      # - Hook method implementation
-      # - Simple value return
-      #
-      # @param method [MethodInfo] 評価対象のメソッド
-      # @return [Boolean] 単純な実装かどうか
-      def simple_implementation?(method)
-        method.cyclomatic_complexity == 1 &&
-          method_line_count(method) <= SIMPLE_IMPLEMENTATION_MAX_LINES
-      end
-
-      # Checks if the class has an abstract parent pattern.
-      #
-      # Abstract parent pattern is detected when the parent class
-      # has methods that raise NotImplementedError (Template Method pattern).
-      #
-      # Note: In Phase 1, this only works within the same file analysis.
-      # Cross-file analysis requires runtime information (Phase 3).
-      #
-      # @param class_info [ClassInfo] クラス情報
-      # @return [Boolean] 抽象親パターンかどうか
-      def abstract_parent_pattern?(class_info)
-        return false unless class_info.superclass
-
-        superclass_name = class_info.superclass.to_s
-
-        # Phase 2a: フレームワーク基底クラスを認識
-        return true if framework_base_class?(superclass_name)
-
-        # Phase 1: 親クラス名に "Base" や "Abstract" が含まれる場合にヒューリスティックで判定
-        superclass_name.include?("Base") || superclass_name.include?("Abstract")
-      end
-
-      # Phase 2a: フレームワーク基底クラスかどうかを判定
-      def framework_base_class?(superclass_name)
-        FRAMEWORK_BASE_CLASSES.any? do |base|
-          superclass_name == base || superclass_name.end_with?("::#{base}")
-        end
-      end
-
-      # Calculates the number of lines in a method body.
-      #
-      # @param method [MethodInfo] 評価対象のメソッド
-      # @return [Integer] メソッドの行数
-      def method_line_count(method)
-        method.line_end - method.line_start
       end
     end
   end
