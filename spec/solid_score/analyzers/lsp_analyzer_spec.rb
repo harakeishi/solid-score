@@ -170,8 +170,10 @@ RSpec.describe SolidScore::Analyzers::LspAnalyzer do
       end
     end
 
-    context "with regular parent class (not abstract pattern)" do
-      it "applies reduced penalty for non-simple implementations" do
+    context "with an override that does not call super" do
+      it "does not penalize merely for skipping super" do
+        # 「super を呼ばないこと自体」は LSP 違反ではない。静的解析では
+        # 完全オーバーライド／新規追加メソッドと区別できないため減点しない。
         class_info = SolidScore::Models::ClassInfo.new(
           name: "Child",
           superclass: "Parent", # Not a Base* or Abstract* class
@@ -188,8 +190,29 @@ RSpec.describe SolidScore::Analyzers::LspAnalyzer do
         )
         score = analyzer.analyze(class_info)
 
-        # Should apply reduced penalty (5 points)
-        expect(score).to eq(95)
+        expect(score).to eq(100)
+      end
+
+      it "still penalizes overrides that raise a non-standard exception" do
+        # 親契約を破る例外（NotImplementedError 以外）は引き続き減点する。
+        class_info = SolidScore::Models::ClassInfo.new(
+          name: "Child",
+          superclass: "Parent",
+          methods: [
+            SolidScore::Models::MethodInfo.new(
+              name: :risky,
+              visibility: :public,
+              line_start: 1,
+              line_end: 10,
+              cyclomatic_complexity: 3,
+              calls_super: false,
+              raises: ["ArgumentError"]
+            )
+          ]
+        )
+        score = analyzer.analyze(class_info)
+
+        expect(score).to eq(85)
       end
     end
   end
