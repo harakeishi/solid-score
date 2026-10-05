@@ -39,6 +39,7 @@ module SolidScore
         ::Prism::MultiWriteNode,
         ::Prism::InstanceVariableTargetNode, ::Prism::LocalVariableTargetNode,
         ::Prism::GlobalVariableTargetNode, ::Prism::ClassVariableTargetNode,
+        ::Prism::CallTargetNode, ::Prism::IndexTargetNode,
         ::Prism::ConstantOrWriteNode, ::Prism::ConstantAndWriteNode, ::Prism::ConstantOperatorWriteNode,
         ::Prism::ConstantPathOrWriteNode, ::Prism::ConstantPathAndWriteNode, ::Prism::ConstantPathOperatorWriteNode,
         ::Prism::YieldNode, ::Prism::BlockNode, ::Prism::LambdaNode,
@@ -145,6 +146,8 @@ module SolidScore
         when ::Prism::CallNode then inspect_call(node)
         when *ATTRIBUTE_ASSIGNMENT_NODES then record_call(node.read_name, node.receiver)
         when *INDEX_ASSIGNMENT_NODES then record_call(:[], node.receiver)
+        when ::Prism::CallTargetNode then record_call(node.name, node.receiver)
+        when ::Prism::IndexTargetNode then record_call(:[]=, node.receiver)
         when ::Prism::InstanceVariableOrWriteNode
           @memoized_factory_receiver ||= memoized_factory_receiver_for(node)
         when ::Prism::SuperNode, ::Prism::ForwardingSuperNode then @calls_super = true

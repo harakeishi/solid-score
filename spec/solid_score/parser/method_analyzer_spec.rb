@@ -42,6 +42,16 @@ RSpec.describe SolidScore::Parser::MethodAnalyzer do
     expect(info.called_methods).to include(:cache, :[])
   end
 
+  it "records attribute and index targets of a multiple assignment as calls" do
+    info = analyze("def foo(a, h)\n  a.x, h[:k] = 1, 2\nend")
+
+    expect(info.called_methods).to eq(%i[x= []=])
+    types = info.method_calls.to_h { |c| [c.method_name, [c.receiver, c.receiver_type]] }
+    expect(types[:x=]).to eq(["a", :lvar])
+    expect(types[:[]=]).to eq(["h", :lvar])
+    expect(info.effective_statement_count).to eq(3)
+  end
+
   it "collects raised constants" do
     info = analyze("def foo\n  raise ArgumentError, 'x'\n  fail Errors::Bad\n  raise Other.new('y')\nend")
 
