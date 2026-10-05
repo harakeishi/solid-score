@@ -26,6 +26,15 @@ module SolidScore
 
       VISIBILITY_MODIFIERS = %i[private protected public].freeze
 
+      # Direct statements of a class/module body. The body is a
+      # StatementsNode normally, but a BeginNode when the class itself has
+      # a rescue/ensure clause, in which case the statements sit inside it.
+      def self.body_statements(node)
+        body = node.body
+        body = body.statements if body.is_a?(::Prism::BeginNode)
+        body&.body || []
+      end
+
       def initialize(node, file_path, namespace)
         @node = node
         @file_path = file_path
@@ -62,7 +71,7 @@ module SolidScore
       private
 
       def statements
-        @node.body&.body || []
+        self.class.body_statements(@node)
       end
 
       def qualified_name

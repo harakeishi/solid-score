@@ -38,6 +38,12 @@ RSpec.describe SolidScore::Parser::DefinitionCollector do
     expect(collect(source).map(&:name)).to eq(%w[A])
   end
 
+  it "collects nested definitions when the body has an ensure clause" do
+    source = "module Outer\n  class Inner; end\nensure\n  nil\nend"
+
+    expect(collect(source).map(&:name)).to eq(%w[Outer Outer::Inner])
+  end
+
   it "attaches the file path to every definition" do
     expect(collect("class A; end").first.file_path).to eq("example.rb")
   end

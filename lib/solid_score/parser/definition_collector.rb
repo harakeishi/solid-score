@@ -33,16 +33,14 @@ module SolidScore
       def collect_definition(node)
         info = ClassBodyScanner.new(node, @file_path, @namespace).class_info
         @classes << info
-        collect_nested(node.body, info.name)
+        collect_nested(node, info.name)
       end
 
-      def collect_nested(body, namespace)
-        return unless body
-
+      def collect_nested(node, namespace)
         with_namespace(namespace) do
-          body.body
-              .select { |child| child.is_a?(::Prism::ClassNode) || child.is_a?(::Prism::ModuleNode) }
-              .each { |child| visit(child) }
+          ClassBodyScanner.body_statements(node)
+                          .select { |child| child.is_a?(::Prism::ClassNode) || child.is_a?(::Prism::ModuleNode) }
+                          .each { |child| visit(child) }
         end
       end
 

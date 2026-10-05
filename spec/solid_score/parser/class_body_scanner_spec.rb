@@ -76,6 +76,12 @@ RSpec.describe SolidScore::Parser::ClassBodyScanner do
     expect(info.methods).to be_empty
   end
 
+  it "scans methods when the class body has a rescue clause" do
+    source = "class A\n  def a; end\nrescue StandardError\n  nil\nend"
+
+    expect(scan(source).methods.map(&:name)).to eq(%i[a])
+  end
+
   it "aggregates instance variables from its methods" do
     info = scan("class A\n  def a\n    @x = 1\n  end\n  def b\n    @x + @y\n  end\nend")
 
