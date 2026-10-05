@@ -108,6 +108,23 @@ RSpec.describe SolidScore::Parser::MethodAnalyzer do
     expect(analyze(source).cyclomatic_complexity).to eq(9)
   end
 
+  it "walks a method body that has its own rescue and ensure clauses" do
+    source = <<~RUBY
+      def foo
+        risky
+      rescue StandardError
+        handle
+      ensure
+        cleanup
+      end
+    RUBY
+    info = analyze(source)
+
+    expect(info.called_methods).to eq(%i[risky handle cleanup])
+    expect(info.cyclomatic_complexity).to eq(2)
+    expect(info.effective_statement_count).to eq(3)
+  end
+
   it "counts effective statements without descending into nested definitions" do
     source = "def foo\n  bar\n  x = 1\n  def inner\n    a\n    b\n  end\nend"
 
