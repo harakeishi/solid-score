@@ -32,6 +32,18 @@ RSpec.describe SolidScore::Runner do
     end
   end
 
+  describe "#run with a file that fails to parse" do
+    it "skips the file instead of raising" do
+      config = SolidScore::Configuration.default
+      config.paths = [File.join(fixtures_path, "syntax_error.rb")]
+
+      runner = described_class.new(config)
+
+      expect { runner.run }.not_to raise_error
+      expect(runner.results).to be_empty
+    end
+  end
+
   describe "#passing?" do
     it "returns true when all scores meet thresholds" do
       config = SolidScore::Configuration.default

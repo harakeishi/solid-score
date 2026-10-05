@@ -58,6 +58,21 @@ RSpec.describe RuboCop::Cop::SolidScore::TotalScore do
     end
   end
 
+  describe "with a file that fails to parse" do
+    let(:min_score) { 95.0 }
+
+    # Commissioner never invokes a cop on a file RuboCop itself cannot parse,
+    # so the rescue in Helpers#compute_scores is reached only when the two
+    # parsers disagree. Call the helper directly to pin its behaviour.
+    it "scores nothing instead of raising" do
+      file_path = File.join(fixtures_path, "syntax_error.rb")
+      cop.begin_investigation(RuboCop::ProcessedSource.new(File.read(file_path), RUBY_VERSION.to_f, file_path))
+
+      expect { cop.send(:score_results_for) }.not_to raise_error
+      expect(cop.send(:score_results_for)).to be_empty
+    end
+  end
+
   private
 
   def expect_offense_in_file(source, file_path)
