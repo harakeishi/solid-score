@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "prism"
+
 module SolidScore
   module Parser
     # Builds a Models::ClassInfo from a single Prism ClassNode/ModuleNode by

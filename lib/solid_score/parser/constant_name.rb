@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "prism"
+
 module SolidScore
   module Parser
     # Renders a Prism constant node as its qualified name ("Foo::Bar").
