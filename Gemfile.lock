@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    solid_score (0.2.0)
+    solid_score (0.3.0)
       prism (~> 1.0)
 
 GEM
