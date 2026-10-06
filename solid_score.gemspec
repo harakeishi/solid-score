@@ -23,6 +23,5 @@ Gem::Specification.new do |spec|
   spec.executables = ["solid-score"]
   spec.require_paths = ["lib"]
 
-  spec.add_dependency "ast", "~> 2.4"
-  spec.add_dependency "parser", "~> 3.3"
+  spec.add_dependency "prism", "~> 1.0"
 end

@@ -266,3 +266,45 @@ RSpec.describe SolidScore::Parser::RubyParser do
     end
   end
 end
+
+RSpec.describe SolidScore::Parser::RubyParser, "edge cases" do
+  let(:fixtures_path) { File.expand_path("../../fixtures", __dir__) }
+  let(:classes) { described_class.new.parse_file("#{fixtures_path}/prism_edge_cases.rb") }
+  let(:edge) { classes.find { |c| c.name == "PrismEdgeCases" } }
+
+  def method_named(name)
+    edge.methods.find { |m| m.name == name }
+  end
+
+  it "renders top-level constants with a leading ::" do
+    expect(edge.superclass).to eq("::Base::Thing")
+    expect(method_named(:failing).raises).to eq(["::Errors::Bad"])
+  end
+
+  it "uses the source text for a non-constant superclass" do
+    expect(classes.find { |c| c.name == "FromStruct" }.superclass).to eq("Struct.new(:a, :b)")
+  end
+
+  it "records argument forwarding as a parameter" do
+    expect(method_named(:forwarding).parameters).to eq([[:forward_arg, nil]])
+  end
+
+  it "records destructured parameters without a name" do
+    expect(method_named(:destructure).parameters).to eq([[:mlhs, nil], [:restarg, nil]])
+  end
+
+  it "records safe-navigation calls as method calls" do
+    expect(method_named(:safe_navigation).called_methods).to include(:name)
+  end
+
+  it "records the read side of an attribute assignment as a call" do
+    calls = method_named(:attribute_assignment).method_calls
+    expect(calls.map(&:method_name)).to include(:cache)
+    expect(calls.find { |c| c.method_name == :cache }.receiver_type).to eq(:self)
+  end
+
+  it "raises SolidScore::Parser::SyntaxError for unparsable source" do
+    expect { described_class.new.parse_file("#{fixtures_path}/syntax_error.rb") }
+      .to raise_error(SolidScore::Parser::SyntaxError, /syntax_error\.rb/)
+  end
+end

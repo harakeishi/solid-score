@@ -56,7 +56,7 @@ module SolidScore
 
     def parse_file(file)
       @parser.parse_file(file)
-    rescue ::Parser::SyntaxError
+    rescue ::SolidScore::Parser::SyntaxError
       []
     end
 

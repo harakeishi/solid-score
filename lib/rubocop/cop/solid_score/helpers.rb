@@ -21,7 +21,7 @@ module RuboCop
 
           class_infos = parser.parse_file(file_path)
           scorer.score_all(class_infos)
-        rescue ::Parser::SyntaxError
+        rescue ::SolidScore::Parser::SyntaxError
           []
         end
 
